@@ -1,25 +1,30 @@
-[![C99 Test Suite](https://github.com/kigster/gomoku-ansi-c/actions/workflows/c99.yml/badge.svg)](https://github.com/kigster/gomoku-ansi-c/actions/workflows/c99.yml) [![API Tests](https://github.com/kigster/gomoku-ansi-c/actions/workflows/api-test.yml/badge.svg)](https://github.com/kigster/gomoku-ansi-c/actions/workflows/api-test.yml) [![API Lint](https://github.com/kigster/gomoku-ansi-c/actions/workflows/api-lint.yml/badge.svg)](https://github.com/kigster/gomoku-ansi-c/actions/workflows/api-lint.yml) [![Frontend Tests](https://github.com/kigster/gomoku-ansi-c/actions/workflows/frontend.yml/badge.svg)](https://github.com/kigster/gomoku-ansi-c/actions/workflows/frontend.yml)
+[![C99 Test Suite](https://github.com/kigster/gomoku-mono-repo/actions/workflows/c99.yml/badge.svg)](https://github.com/kigster/gomoku-mono-repo/actions/workflows/c99.yml) [![API Tests](https://github.com/kigster/gomoku-mono-repo/actions/workflows/api-test.yml/badge.svg)](https://github.com/kigster/gomoku-mono-repo/actions/workflows/api-test.yml) [![API Lint](https://github.com/kigster/gomoku-mono-repo/actions/workflows/api-lint.yml/badge.svg)](https://github.com/kigster/gomoku-mono-repo/actions/workflows/api-lint.yml) [![Frontend Tests](https://github.com/kigster/gomoku-mono-repo/actions/workflows/frontend.yml/badge.svg)](https://github.com/kigster/gomoku-mono-repo/actions/workflows/frontend.yml)
 
 # Gomoku (Five-in-a-Row)
+Welcome to the monorepo that builds several kinds of Gomoku executables, adjacent features, testing clients, and Gomocup entry built for Win32/Win64. 
 
-> [!IMPORTANT]
->
-> There is a [Rust port of `gomoku-httpd`](https://github.com/kigster/gomoku-rust-httpd). This is the binary that works as a stateless C-based AI "brain" so to speak, and receive the entire game state as JSON. To make a move, a new move appended to the move list and the JSON returned to the called. The interfaces via HTTP and JSON uses JSON schema in the `config` folder of this repo.
+This monorepo contains of several components written in more than a few languages to create a multi-purpose Gomoku repository.By _multipurpuse_ we mean thst the following can be built after cloing the repo and running the setup:
 
-Welcome to the monorepo that builds several kinds of Gomoku executables, adjacent features, 
-testing clients, and Gomocup entry built for Win32/Win64. 
+> [!NOTE]
+> 
+> Tools required: given that there is a `Brewfile` at the root of the project, just running `brew bundle` will get you most of the Brew dependencies and tooling used on MacOSX. 
 
-This monorepo contains at least five or six languages to create a multi-purpose Gomoku repository.
-
-By _multipurpuse_ we mean thst the following can be built by cloning this repo:
-
-This is a monorepo that contains at least five or six languages to create multi-purpose Gomoku repsotory.
-
-The following can be built by cloning this repo:
+## The Components of the Mono Repo
 
 1. A **Fast TUI Executable** `./bin/gomoku` compiles on any system that has a C99-compaatible compiler**, TTY Terminal Gomoku Game and the logic "brain". This module is what plays as "AI" against humans, and so it's written in C to optimize the performance. 
 
-2. **Full multi-user tournament-ready web version.** — This version gets deployed to a cloud and runs. Play online at **[gomoku.games](https://app.gomoku.games)**. You can play with another human, or you can play against the AI.
+2. **Full Multi-User, User vs AI distributed Web Version with user accounts, persistence, and Elo-based score computation.**
+  - This version reuses the AI from the TUI gomoku (above), but does not use any of the TTY UI functions
+  - instead, the C side focuses on building a long-running daemon server: `gomoku-httpd` — a headless AI "brain" that responds to the JSON API (which gets validated by the JSON schema validator in `schema_validator` folder. 
+  - A ReactJS SPA that uses `vite` in development, and `NextJS` build in the production, dumped into the `api/public` folder as static HTML/CSS/JS package.
+  - That static content is served diligently by the multipurpose **FastAPI Python server**, which here it performs three-four main functions:
+    1. it serves static assets including index.html and the SPA code
+    2. it responds to a rich REST API to create and authenticate users, store their games, facilitate human on human games as well as human vs AI. It also responds to health checks to communicate to Google Cloud that all is good in the neighbourhood.
+    3. it proxies the game related calls from ReactJS side (GET and POST to /game/*) to the `gomoku-httpd` backend that runs in it's own container, and is only booted when the game is initiated.
+    4. In the close future, a user may chose to play against a much faster multi-core Rust implementation: [`gomoku-rust-httpd`](https://github.com/kigster/gomoku-rust-httpd) of the same game AI engine. When the executable has access to 10 vCPU cores, it runs nearly 10x faster that C-based binary. It's also has a few additinoal performance imrovements, so it's play may be somewhat different. Considering this will need access to some compute resouces, I may try to figure out how much such a game on a Docker conainer with 10x vCPUs cost, and turn that in a paid tier. It will still be only a few bucks a month to cover the costs, but that one might be worthwhile paying for.
+
+
+  - that sits in gets deployed to a cloud and runs. Play online at **[gomoku.games](https://app.gomoku.games)**. You can play with another human, or you can play against the AI.
 
 > [!IMPORTANT]
 > 
@@ -32,6 +37,11 @@ The following can be built by cloning this repo:
   - A C-based binary `gomoku-httpd` which, unlike `gomoku` has no UI and is meant to run as an httpd daemon. However, this service is very special in a sense that it's listening on a particular port. Each process can only handle a single move at a time, so you should run as many of those as you expect concurrent players (although putting envoy proxy in front of gomoku-httpd might help shrink it a litle bit). Google Run handles this automatically
 
 3. [Gomocup](https://gomocup.org) compatible binaries are also provided, to engage in this competition.
+
+> [!IMPORTANT]
+>
+> 4. There is a [Rust port of `gomoku-httpd`](https://github.com/kigster/gomoku-rust-httpd). This is the binary that works as a stateless C-based AI "brain" so to speak, and receive the entire game state as JSON. To make a move, a new move appended to the move list and the JSON returned to the called. The interfaces via HTTP and JSON uses JSON schema in the `config` folder of this repo.
+
 
 ## Going a bit Deeper
 
