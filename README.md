@@ -2,6 +2,17 @@
 
 # Gomoku (Five-in-a-Row)
 
+> [!IMPORTANT]
+>
+> There is a [Rust port of `gomoku-httpd`](https://github.com/kigster/gomoku-rust-httpd). This is the binary that works as a stateless C-based AI "brain" so to speak, and receive the entire game state as JSON. To make a move, a new move appended to the move list and the JSON returned to the called. The interfaces via HTTP and JSON uses JSON schema in the `config` folder of this repo.
+
+Welcome to the monorepo that builds several kinds of Gomoku executables, adjacent features, 
+testing clients, and Gomocup entry built for Win32/Win64. 
+
+This monorepo contains at least five or six languages to create a multi-purpose Gomoku repository.
+
+By _multipurpuse_ we mean thst the following can be built by cloning this repo:
+
 This is a monorepo that contains at least five or six languages to create multi-purpose Gomoku repsotory.
 
 The following can be built by cloning this repo:
