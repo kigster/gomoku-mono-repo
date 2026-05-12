@@ -56,22 +56,22 @@ clean-start: clean build
 
 # Run C engine unit tests (game + daemon)
 test: test-daemon test-api test-frontend
-    make -C gomoku-c test
+    ENVIRONMENT=test make -C gomoku-c test
 
 test-gomoku-c: 
-    make -C gmoku-c test
+    ENVIRONMENT=test make -C gmoku-c test
 
 # Run daemon unit tests only
 test-daemon:
-    make -C gomoku-c test-daemon
+    ENVIRONMENT=test make -C gomoku-c test-daemon
 
 # Run API tests in parallel across 4 workers (each gets its own gomoku_test_gwN DB)
 test-api:
-    cd api && just install && just test -n 5
+    ENVIRONMENT=test cd api && just install && just test -n 5
 
 # Run frontend tests
 test-frontend:
-    cd frontend && npm test
+    ENVIRONMENT=test cd frontend && npm test
 
 # Run Cypress end-to-end tests. Restarts the local cluster from a known
 # state first (gctl stop is a no-op if nothing's up; gctl start is
