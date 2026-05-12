@@ -437,22 +437,43 @@ docker compose up -d
 
 Minimum setup: two containers (`gomoku-api:latest` on port 8000, `gomoku-httpd:latest` on port 8787), a reverse proxy (nginx/Caddy) for TLS. Set environment variables as shown in the [Configuration](#configuration) section.
 
-## Configuration
+## CONFIGURATION
 
-The FastAPI app loads `api/.env.{development,test,ci}[.local]` based on the `ENVIRONMENT` env var (default `development`). Committed defaults live in `api/.env.development` and `api/.env.test`; `.local` overlays are gitignored for personal overrides (e.g., pointing local dev at Neon).
+The FastAPI app loads `api/.env.{development,test,ci}[.local]` based on the `ENVIRONMENT` env var (default `development`). Committed defaults live in `api/.env.development` and `api/.env.test`; `.local` overlays are gitignored for personal overrides. In production, all values come from Cloud Run env vars set by Terraform (no `.env` file is read).
+
+The tables below split variables by whether the app can boot/run without them. See [Application Configuration](#application-configuration) below for the full reference (telemetry, database details, etc.).
+
+### Required (the app will not function correctly without these)
+
+| Variable | Required In | Purpose |
+|---|---|---|
+| `ENVIRONMENT` | always | `development`, `test`, `ci`, or `production` — selects which `.env.{stage}` file Pydantic loads. Defaults to `development`. |
+| `DATABASE_URL` | production, any non-default DB | Full PostgreSQL DSN, e.g. `postgresql://user:pass@host/gomoku`. Without this, the app falls back to `postgresql://postgres@localhost/gomoku` which only works for local development. |
+| `JWT_SECRET` | production | HMAC signing key for auth tokens. The committed default `change-me-in-production` MUST be overridden in any deployed environment. Generate with `just jwt-secret` or `openssl rand -base64 32`. |
+| `GOMOKU_HTTPD_URL` | production | URL of the upstream C game engine daemon. Defaults to `http://localhost:10000` (envoy frontend) for local clusters. |
+| `PUBLIC_DOMAIN` | production | Domain used to build outbound URLs (e.g. password-reset links in emails). Defaults to `app.gomoku.games`. |
+
+### Required when email is enabled (`EMAIL_PROVIDER=sendgrid`)
+
+| Variable | Purpose |
+|---|---|
+| `EMAIL_PROVIDER` | Set to `sendgrid` in production. Default `stdout` writes reset links to the console (development only). |
+| `SENDGRID_API_KEY` | SendGrid Web API v3 bearer token. Create at <https://app.sendgrid.com/settings/api_keys>. The app raises `RuntimeError` at send time if `EMAIL_PROVIDER=sendgrid` and this is unset. |
+| `EMAIL_FROM` | Sender address. Must belong to a SendGrid-authenticated domain (DKIM/SPF). Default `gomoku@email.gomoku.games`. |
+| `EMAIL_FROM_NAME` | Friendly display name on the `From:` header. Default `Gomoku Support`. |
+
+> **Note on SendGrid auth.** SendGrid's v3 API authenticates with a single API *key* (Bearer token). There is no separate API *ID* — the key alone identifies your account. Store `SENDGRID_API_KEY` in Cloud Run as a Secret Manager-backed env var, never in a committed `.env` file.
+
+### Optional (have safe defaults)
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ENVIRONMENT` | `development` | `development`, `test`, `ci`, or `production` — selects which `.env.{stage}` file Pydantic loads |
-| `DATABASE_URL` | from `.env.{stage}` | PostgreSQL DSN |
-| `GOMOKU_HTTPD_URL` | `http://localhost:10000` | Upstream game engine (envoy frontend) |
-| `JWT_SECRET` | from `.env.{stage}` | HMAC signing key |
-| `CORS_ORIGINS` | `["*"]` | Allowed origins (JSON array) |
-| `EMAIL_PROVIDER` | `stdout` | `stdout` or `sendgrid` |
-| `HONEYCOMB_API_KEY` | *(none)* | Honeycomb ingest key — enables OTel tracing when set |
-| `OTEL_SERVICE_NAME` | `gomoku-api` | Service name in Honeycomb traces |
-
-In production, all of these come from Cloud Run env vars set by Terraform (no `.env` file is read). See the [Application Configuration](#application-configuration) section below for the full reference.
+| `JWT_ALGORITHM` | `HS256` | JWT signing algorithm. |
+| `JWT_EXPIRE_MINUTES` | `10080` (1 week) | Token lifetime. |
+| `CORS_ORIGINS` | `["*"]` | JSON array of allowed origins. Tighten in production. |
+| `HONEYCOMB_API_KEY` | *(none)* | Honeycomb ingest key — enables OTel tracing when set. No-op when unset. |
+| `OTEL_SERVICE_NAME` | `gomoku-api` | Service name attached to every span. |
+| `CUSTOM_DOMAIN` | *(none)* | Override `PUBLIC_DOMAIN` (e.g. local dev hosts pointed at `dev.gomoku.games` via `/etc/hosts`). |
 
 ## Project Structure
 
@@ -550,9 +571,10 @@ The FastAPI server (`api/`) is configured via environment variables. Locally, de
 
 | Variable | Default | Description |
 |---|---|---|
-| `EMAIL_PROVIDER` | `stdout` | `stdout` or `sendgrid`. |
-| `EMAIL_FROM` | `noreply@gomoku.games` | Sender address. |
-| `SENDGRID_API_KEY` | *(none)* | Required when `EMAIL_PROVIDER=sendgrid`. |
+| `EMAIL_PROVIDER` | `stdout` | `stdout` (logs the reset link — dev only) or `sendgrid` (posts to SendGrid v3). |
+| `EMAIL_FROM` | `gomoku@email.gomoku.games` | Sender address. Must belong to a SendGrid-authenticated domain (DKIM/SPF). |
+| `EMAIL_FROM_NAME` | `Gomoku Support` | Friendly display name shown alongside `EMAIL_FROM` in the `From:` and `Reply-To:` headers. |
+| `SENDGRID_API_KEY` | *(none)* | SendGrid Web API v3 bearer token. Required when `EMAIL_PROVIDER=sendgrid` — the service raises `RuntimeError` at send time if missing. |
 
 ### Telemetry
 

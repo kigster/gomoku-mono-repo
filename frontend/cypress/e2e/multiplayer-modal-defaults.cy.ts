@@ -7,8 +7,9 @@
 //      colour-chooser visible, and a host-issued invite URL/code already
 //      filled in (no "click Start to generate" step).
 //   2. Two users registered from one Cypress run, simulated as two
-//      browsers via cy.useUser, can land in the in-game layout — board on
-//      the right, light-themed ChatPanel on the left.
+//      browsers via cy.useUser, can land in the in-game layout — board
+//      on the right, ChatPanel in the left rail's "Multi" tab (the same
+//      tabbed sidebar the home page uses).
 //
 // Each test cleans up its scratch users at the end so the suite can be
 // re-run against the same DB without uniqueness collisions.
@@ -124,8 +125,9 @@ describe('Two-browser multiplayer smoke', () => {
     cy.contains(`${alice.username} vs ${bob.username}`, { timeout: 15000 })
       .should('be.visible')
 
-    // The light-themed ChatPanel is the left column. Its header reads
-    // "Chat with @alice" from Bob's perspective (peer = host).
+    // The ChatPanel in the left-rail "Multi" tab (auto-selected on
+    // /play/<code>) has a header reading "Chat with @alice" from
+    // Bob's perspective (peer = host).
     cy.contains(/Chat with/i).should('be.visible')
     cy.contains(`@${alice.username}`).should('be.visible')
 
