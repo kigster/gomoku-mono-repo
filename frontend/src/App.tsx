@@ -30,6 +30,7 @@ import DifficultySettingsModal from './components/DifficultySettingsModal'
 import AmbientBackground from './components/AmbientBackground'
 import MultiplayerGamePage from './components/MultiplayerGamePage'
 import ChooseGameTypeModal from './components/ChooseGameTypeModal'
+import UserActivityTracker from './components/UserActivityTracker'
 import logo from '../assets/images/logo.png'
 
 const MULTIPLAYER_PATH_RE = /^\/play\/([A-Z2-9]{6})$/
@@ -361,6 +362,7 @@ export default function App () {
     return (
       <>
         <AlertPanel />
+        <UserActivityTracker authToken={authToken!} apiBase={API_BASE} />
         <div className='min-h-screen relative z-10'>
           <AmbientBackground />
           <nav className='bg-neutral-800/95 backdrop-blur-sm border-b border-neutral-700 shadow-lg sticky top-0 z-40'>
@@ -392,6 +394,9 @@ export default function App () {
   return (
     <>
       <AlertPanel />
+      {authToken && !needsAuth && (
+        <UserActivityTracker authToken={authToken} apiBase={API_BASE} />
+      )}
       {needsAuth ? (
         <AuthModal
           onAuth={handleAuth}

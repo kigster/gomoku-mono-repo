@@ -86,6 +86,7 @@ fastapi_app.include_router(leaderboard.router)
 fastapi_app.include_router(multiplayer.router)
 fastapi_app.include_router(social.router)
 fastapi_app.include_router(user.router)
+fastapi_app.include_router(user.seen_router)
 
 instrument_app(fastapi_app)
 
