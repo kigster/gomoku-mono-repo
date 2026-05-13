@@ -11,10 +11,6 @@ from app.session import get_session
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
-# Presence-bump throttle: don't refresh users.last_seen_at more than
-# once per this many seconds per user. See get_current_user.
-PRESENCE_BUMP_THROTTLE_SEC = 10
-
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
@@ -60,30 +56,20 @@ async def get_current_user(
     user_id = payload.get("sub")
     if user_id is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid token payload")
-    async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            """SELECT id, username, email, first_name, last_name,
-                      created_at, last_logged_in_at, logins_count,
-                      last_seen_at
-               FROM users WHERE id = $1::uuid""",
-            user_id,
-        )
-        if row is None:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
-        # Throttled presence bump. An active player polls
-        # /multiplayer/{code} every 300 ms; if we wrote on every call
-        # we'd produce 3 dead tuples/sec/user (Postgres doesn't
-        # deduplicate value-equal UPDATEs — a new row version is
-        # created regardless). Throttling to one write per
-        # PRESENCE_BUMP_THROTTLE_SEC collapses bursts into a single
-        # row-version per window. The presence window is 60 s, so
-        # 10-second resolution is plenty.
-        last_seen = row["last_seen_at"]
-        if (datetime.now(UTC) - last_seen).total_seconds() >= PRESENCE_BUMP_THROTTLE_SEC:
-            await conn.execute(
-                "UPDATE users SET last_seen_at = now() WHERE id = $1::uuid",
-                user_id,
-            )
+    # NOTE: get_current_user used to bump users.last_seen_at on every
+    # authenticated call. Presence is now driven entirely by the
+    # client via POST /users/me/seen (see UserActivityTracker on the
+    # frontend), so the auth dependency is read-only — the row it
+    # returns reflects the last value the client itself posted.
+    row = await pool.fetchrow(
+        """SELECT id, username, email, first_name, last_name,
+                  created_at, last_logged_in_at, logins_count,
+                  last_seen_at
+           FROM users WHERE id = $1::uuid""",
+        user_id,
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found")
     return dict(row)
 
 

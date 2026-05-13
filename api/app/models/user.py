@@ -53,6 +53,27 @@ class TokenResponse(BaseModel):
     username: str
 
 
+class PresenceSeenRequest(BaseModel):
+    """Client-supplied presence update.
+
+    The client tracks user-input activity locally with a 15-second
+    debounce and posts the most recent timestamp on a 60-second
+    schedule (see frontend's UserActivityTracker). The server only
+    updates `users.last_seen_at` if the incoming timestamp is newer
+    than the stored value, so duplicate/out-of-order POSTs are safe.
+    """
+
+    last_seen_at: datetime
+
+
+class PresenceSeenResponse(BaseModel):
+    """The post-update value of `users.last_seen_at` — always the freshest
+    of (client-submitted, previously-stored). Lets the client reconcile
+    its local `activity_synced_at` without a second round-trip."""
+
+    last_seen_at: datetime
+
+
 class PasswordResetRequest(BaseModel):
     """Password reset request body."""
 
