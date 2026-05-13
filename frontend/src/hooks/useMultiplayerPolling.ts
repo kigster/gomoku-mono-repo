@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   getGame,
+  MultiplayerApiError,
   postMove,
   resignGame,
   type MultiplayerGameView,
@@ -28,12 +29,16 @@ export interface UseMultiplayerPollingResult {
   refresh: () => Promise<void>
 }
 
-/** Polls GET /multiplayer/{code} every 1.5s. When the server replies 304
- *  (no change since the prior `version`), keeps the existing state.
- *  Stops polling once the game reaches `finished` or `abandoned`. */
+/** Polls GET /multiplayer/{code}. When the server replies with the
+ *  `{no_change: true}` sentinel (no update since the prior `version`),
+ *  keeps the existing state. Stops polling once the game reaches
+ *  `finished` or `abandoned`, or once the server returns 401 (in which
+ *  case `onSessionExpired` fires and the loop terminates so we don't
+ *  hammer the auth-failing endpoint every 300 ms). */
 export function useMultiplayerPolling(
   token: string,
   code: string,
+  onSessionExpired?: () => void,
 ): UseMultiplayerPollingResult {
   const [game, setGame] = useState<
     MultiplayerGameView | MultiplayerGamePreview | null
@@ -56,8 +61,8 @@ export function useMultiplayerPolling(
         versionRef.current ?? undefined,
       )
       if (result === null) {
-        // 304 — no change. Cadence is driven by elapsed wall time, not
-        // by the consecutive-304 streak.
+        // `{no_change: true}` — keep the prior state. Cadence is driven
+        // by elapsed wall time (see pollingSchedule.ts).
         return
       }
       setGame(result)
@@ -71,15 +76,38 @@ export function useMultiplayerPolling(
         stoppedRef.current = true
       }
     } catch (err) {
+      // Terminal HTTP errors — no point retrying these every 300 ms:
+      //   401: JWT decoded fine but the user record was missing
+      //        (DB reset, deleted user, cross-env token). Hand off to
+      //        the App so it can clear the session and surface the
+      //        sign-in modal.
+      //   403: caller has a valid session but is not allowed to see
+      //        this game (not a participant on a non-public game, etc.).
+      //   404: the game code doesn't exist (or was hard-deleted). The
+      //        row isn't coming back; further polls just waste battery
+      //        and spam the network log.
+      if (err instanceof MultiplayerApiError) {
+        if (err.status === 401) {
+          stoppedRef.current = true
+          setError(err.detail || 'Session expired')
+          onSessionExpired?.()
+          return
+        }
+        if (err.status === 404 || err.status === 403) {
+          stoppedRef.current = true
+          setError(err.detail || `HTTP ${err.status}`)
+          return
+        }
+      }
       const msg = err instanceof Error ? err.message : String(err)
       setError(msg)
     } finally {
       setLoading(false)
     }
-  }, [token, code])
+  }, [token, code, onSessionExpired])
 
   // Initial fetch + polling loop with a max-age cutoff. Cadence comes
-  // from `pollingIntervalForElapsedMs` — wall-clock-tiered, not 304-stream.
+  // from `pollingIntervalForElapsedMs` — wall-clock-tiered, not no-change-stream.
   useEffect(() => {
     stoppedRef.current = false
     versionRef.current = null

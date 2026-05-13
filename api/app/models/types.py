@@ -6,6 +6,8 @@ from pydantic import BaseModel
 
 
 class LeaderboardEntry(BaseModel):
+    """Leaderboard entry response body."""
+
     username: str
     # Elo is now the canonical ranking field. `score` / `rating` are kept
     # for backward compatibility with the existing frontend; both will
@@ -24,4 +26,6 @@ class LeaderboardEntry(BaseModel):
 
 
 class LeaderboardResponse(BaseModel):
+    """Leaderboard response body."""
+
     entries: list[LeaderboardEntry]

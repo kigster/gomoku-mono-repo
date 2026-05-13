@@ -201,7 +201,7 @@ export default function App () {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${authToken}`
           },
-          body: JSON.stringify({ game_json: gameState })
+          body: JSON.stringify({ game_json: gameState, game_id: gameState.game_id })
         })
           .then(async r => {
             if (r.status === 401) {
@@ -382,6 +382,7 @@ export default function App () {
             token={authToken!}
             code={multiplayerCode}
             username={playerName!}
+            onSessionExpired={handleSessionExpired}
           />
         </div>
       </>
@@ -634,16 +635,40 @@ export default function App () {
                   <div className='mt-5'>
                     {phase === 'idle' && (
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           setShowSettings(false)
                           trackGameStart(settings)
+                          // Await /game/start so we can stamp the
+                          // server-issued games.id onto the initial
+                          // GameState. The save path later sends it
+                          // back so `/game/save` UPDATEs the row in
+                          // place rather than inserting a duplicate.
+                          let gameId: string | undefined
                           if (authToken) {
-                            fetch(`${API_BASE}/game/start`, {
-                              method: 'POST',
-                              headers: { Authorization: `Bearer ${authToken}` }
-                            }).catch(() => {})
+                            try {
+                              const resp = await fetch(`${API_BASE}/game/start`, {
+                                method: 'POST',
+                                headers: {
+                                  Authorization: `Bearer ${authToken}`,
+                                  'Content-Type': 'application/json',
+                                },
+                                body: JSON.stringify({
+                                  board_size: settings.boardSize,
+                                  depth: settings.aiDepth,
+                                  radius: settings.aiRadius,
+                                  human_player: settings.playerSide,
+                                }),
+                              })
+                              if (resp.ok) {
+                                const data = await resp.json()
+                                if (typeof data.game_id === 'string') gameId = data.game_id
+                              }
+                            } catch {
+                              // Non-fatal: lose UPDATE-in-place; the
+                              // save path falls back to INSERT.
+                            }
                           }
-                          startGame()
+                          startGame(gameId)
                           scrollToBottom()
                         }}
                         className='w-full py-3 rounded-xl text-lg font-semibold font-heading
