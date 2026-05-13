@@ -155,6 +155,10 @@ describe('ChatPanel — in-game persistence', () => {
     )
     expect(screen.getByText(/@alice \(idle\)/)).toBeInTheDocument()
     expect(screen.getByText(/@bob \(human-battle\)/)).toBeInTheDocument()
+    // No "@alice /who" echo bubble — /who is a UI query, not a message.
+    // The literal "/who" text should NOT appear as the user's own bubble
+    // alongside the system block.
+    expect(screen.queryByText('/who')).toBeNull()
   })
 
   it('renders a polled peer message after it arrives via the hook', async () => {
