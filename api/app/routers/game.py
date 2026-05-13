@@ -83,24 +83,27 @@ async def start(
     pool=Depends(get_pool),
     body: GameStartRequest | None = None,
 ) -> GameStartResponse:
-    # Body is optional so legacy clients (no body) still work; missing
-    # fields fall back to the defaults defined on GameStartRequest.
-    if body is None:
-        body = GameStartRequest()
-    """Insert a games row in `in_progress` state and return its id.
+    """
+    Body is optional so legacy clients (no body) still work; missing
+    fields fall back to the defaults defined on GameStartRequest.
+
+    Insert a games row in `in_progress` state and return its id.
 
     The frontend stores `game_id` in the local game JSON and sends it
-    back on `/game/save`, which UPDATEs the same row instead of
-    inserting a new one. That means one AI session = one `games` row,
-    visible from the moment it starts (so `online_users` can derive an
-    "ai-battle" state from `games.status = 'in_progress'`).
+    back on `/game/save`, which allows the backend to UPDATEs the game
+    row instead of inserting a new one. That means one AI session =
+    one `games` row, visible from the moment it starts (so
+    `online_users` can derive an "ai-battle" state from
+    `games.status = 'in_progress'`).
 
-    Any prior `in_progress` AI rows for this user are flipped to
+    NOTE: Any prior `in_progress` AI rows for this user are flipped to
     `abandoned` first — a user who never finished a previous game (tab
     close, crash) gets the unfinished row tidied automatically when
     they start a new one. The leftover stale rows that nobody ever
     follows up on are handled by a future cleanup pass.
     """
+    if body is None:
+        body = GameStartRequest()
     start_time = time.monotonic()
     user_id = str(user["id"])
     async with pool.acquire() as conn:

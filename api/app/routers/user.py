@@ -9,7 +9,7 @@ router = APIRouter(prefix="/user", tags=["user"])
 
 
 @router.get("/me", response_model=UserOut)
-async def get_me(user: dict = Depends(get_current_user), pool=Depends(get_pool)):
+async def get_me(user: dict = Depends(get_current_user), pool=Depends(get_pool)) -> UserOut:
     best = await pool.fetchrow(
         """SELECT score, depth, radius, played_at
            FROM games

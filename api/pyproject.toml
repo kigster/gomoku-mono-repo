@@ -1,7 +1,7 @@
 [project]
 name = "gomoku-api"
 version = "0.1.0"
-description = "FastAPI service for Gomoku: auth, game proxy, scoring, leaderboard"
+description = "FastAPI API & Web Service for Gomoku, supporting auth, chat, game proxy, scoring, leaderboard"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
