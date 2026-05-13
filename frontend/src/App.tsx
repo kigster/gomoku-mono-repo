@@ -31,6 +31,7 @@ import AmbientBackground from './components/AmbientBackground'
 import MultiplayerGamePage from './components/MultiplayerGamePage'
 import ChooseGameTypeModal from './components/ChooseGameTypeModal'
 import UserActivityTracker from './components/UserActivityTracker'
+import InviteAcceptModal from './components/InviteAcceptModal'
 import logo from '../assets/images/logo.png'
 
 const MULTIPLAYER_PATH_RE = /^\/play\/([A-Z2-9]{6})$/
@@ -363,6 +364,11 @@ export default function App () {
       <>
         <AlertPanel />
         <UserActivityTracker authToken={authToken!} apiBase={API_BASE} />
+        <InviteAcceptModal
+          authToken={authToken!}
+          apiBase={API_BASE}
+          meUsername={playerName!}
+        />
         <div className='min-h-screen relative z-10'>
           <AmbientBackground />
           <nav className='bg-neutral-800/95 backdrop-blur-sm border-b border-neutral-700 shadow-lg sticky top-0 z-40'>
@@ -395,7 +401,14 @@ export default function App () {
     <>
       <AlertPanel />
       {authToken && !needsAuth && (
-        <UserActivityTracker authToken={authToken} apiBase={API_BASE} />
+        <>
+          <UserActivityTracker authToken={authToken} apiBase={API_BASE} />
+          <InviteAcceptModal
+            authToken={authToken}
+            apiBase={API_BASE}
+            meUsername={playerName!}
+          />
+        </>
       )}
       {needsAuth ? (
         <AuthModal

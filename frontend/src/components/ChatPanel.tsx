@@ -78,8 +78,15 @@ interface ChatPanelProps {
 // The followee can send invites to anyone who follows them even when the
 // follow isn't reciprocal — only mutual follows count as "friends".
 const SLASH_USERNAME = '([\\wÀ-ɏ0-9\\-\\^]{2,30})'
+// /invite picks up an optional freeform tail after the username — that
+// text is forwarded to /chat/invite as the `message` field and rendered
+// in the invitee's modal. The other three slash commands stay strict
+// "verb + target" because they have no message payload.
 const SLASH_RE: Record<SlashAction, RegExp> = {
-  invite: new RegExp(`^\\s*/invite\\s+@?${SLASH_USERNAME}\\s*$`, 'i'),
+  invite: new RegExp(
+    `^\\s*/invite\\s+@?${SLASH_USERNAME}(?:\\s+(.+))?\\s*$`,
+    'i',
+  ),
   block: new RegExp(`^\\s*/block\\s+@?${SLASH_USERNAME}\\s*$`, 'i'),
   follow: new RegExp(`^\\s*/follow\\s+@?${SLASH_USERNAME}\\s*$`, 'i'),
   unfollow: new RegExp(`^\\s*/unfollow\\s+@?${SLASH_USERNAME}\\s*$`, 'i'),
@@ -459,19 +466,44 @@ export default function ChatPanel ({
     }
   }
 
-  async function dispatchSlash (action: SlashAction, target: string) {
+  async function dispatchSlash (
+    action: SlashAction,
+    target: string,
+    message?: string,
+  ) {
     const spec = SLASH_SPECS[action]
     setPending(true)
     try {
+      const payload: Record<string, string> = { target_username: target }
+      // Only /invite carries a message field; the other slash actions
+      // ignore the third argument by design.
+      if (action === 'invite' && message && message.trim()) {
+        payload.message = message.trim()
+      }
       const resp = await fetch(`${apiBase}${spec.endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${authToken}`,
         },
-        body: JSON.stringify({ target_username: target }),
+        body: JSON.stringify(payload),
       })
       if (!resp.ok) {
+        // /invite intentionally masks the 403 "cannot_invite_blocker"
+        // response: the spec doesn't want the inviter to learn they've
+        // been blocked, only that the message couldn't go through. The
+        // server still returns 403 with the detail, but we swap to a
+        // bland delivery-failure caption here.
+        if (action === 'invite' && resp.status === 403) {
+          pushMessage({
+            speaker: 'system',
+            me: false,
+            body: "Sorry, we couldn't deliver your message.",
+            system: true,
+            systemKind: 'error',
+          })
+          return
+        }
         throw new Error(await formatErrorDetail(resp))
       }
       const body = (await resp.json().catch(() => ({}))) as SlashResponseBody
@@ -563,7 +595,10 @@ export default function ChatPanel ({
     for (const action of Object.keys(SLASH_RE) as SlashAction[]) {
       const m = SLASH_RE[action].exec(text)
       if (!m) continue
-      void dispatchSlash(action, m[1])
+      // m[2] is only captured by the /invite regex (optional trailing
+      // freeform message). The other slash regexes have no second
+      // capture group, so it's `undefined` and dispatchSlash ignores it.
+      void dispatchSlash(action, m[1], m[2])
       return
     }
   }

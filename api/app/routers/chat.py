@@ -62,6 +62,17 @@ TargetState = Literal["in_game", "idle", "offline"]
 INVITE_HOURLY_CAP = 7
 INVITE_DAILY_CAP = 15
 
+# Chat-message length cap, enforced both here (Pydantic, for a clean 422)
+# and by the column CHECK on `chat_messages.message`. Defined up here so
+# the InviteRequest model below can use it for the optional attached
+# message; the chat-messages models lower down share the same constant.
+CHAT_MESSAGE_MAX_LEN = 500
+
+# Polite line surfaced when the invitee taps Decline. The frontend never
+# reads this string — it's stored verbatim as a chat_messages row from
+# the invitee, so the inviter sees it in the chat log on their side.
+DECLINE_MESSAGE = "Apologies, but I can't play or chat at the moment."
+
 # Required verbatim by the spec — frontend pattern-matches on this
 # string in the chat panel error caption. Do not reword without
 # updating the spec.
@@ -70,6 +81,13 @@ RATE_LIMIT_ERROR = "Your have reached invite maximum for this period."
 
 class InviteRequest(BaseModel):
     target_username: str = Field(min_length=2, max_length=30)
+    # Optional one-line note the inviter wants the recipient to see in
+    # the modal ("hey wanna play?" etc.). Stored as a chat_messages row
+    # against the new game's chat so it survives accept (the chat shows
+    # the note) and decline (the note remains in the cancelled game's
+    # chat for the audit trail). Bounded by the same column CHECK as
+    # other chat messages.
+    message: str | None = Field(default=None, max_length=CHAT_MESSAGE_MAX_LEN)
 
 
 class InviteResponse(BaseModel):
@@ -214,6 +232,26 @@ async def invite(
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
         code = row.code
 
+        # If the inviter attached a note, persist it as the first
+        # chat_messages row for this game's chat. Surfaced verbatim in
+        # the recipient's invite modal and remains in the chat if she
+        # accepts. allocate_game already created the paired chat row,
+        # so the FK target is guaranteed to exist.
+        if body.message is not None and body.message.strip():
+            chat_id = await conn.fetchval(
+                "SELECT id FROM chats WHERE multiplayer_game_id = $1::uuid",
+                row.id,
+            )
+            await conn.execute(
+                """
+                INSERT INTO chat_messages (chat_id, speaker_id, message)
+                VALUES ($1::uuid, $2::uuid, $3)
+                """,
+                str(chat_id),
+                caller_id,
+                body.message.strip(),
+            )
+
     return InviteResponse(
         invited_code=code,
         invite_url=game_invite_url(code),
@@ -228,7 +266,10 @@ async def invite(
 
 
 class IncomingInvite(BaseModel):
-    """One pending invite addressed to the caller."""
+    """One pending invite addressed to the caller. `message` carries
+    the optional note the inviter attached (the first chat_messages
+    row authored by the host before any guest joined). Null when the
+    inviter sent a bare invite."""
 
     code: str
     invite_url: str
@@ -236,16 +277,15 @@ class IncomingInvite(BaseModel):
     board_size: int
     created_at: datetime
     expires_at: datetime
+    message: str | None = None
 
 
 class IncomingInvitesResponse(BaseModel):
     invites: list[IncomingInvite]
 
 
-# In-game chat-messages: maximum is enforced both here (Pydantic, for a
-# clean 422 with a Pydantic-shaped detail) and by the column CHECK on
-# `chat_messages.message` (defence in depth).
-CHAT_MESSAGE_MAX_LEN = 500
+class DeclineResponse(BaseModel):
+    declined: bool
 
 
 class ChatMessage(BaseModel):
@@ -287,7 +327,19 @@ async def incoming(
                mg.board_size,
                mg.created_at,
                mg.expires_at,
-               u.username AS host_username
+               u.username AS host_username,
+               (
+                   -- The first chat_messages row authored by the host
+                   -- on this chat IS the attached invite note (the
+                   -- inviter posts only that line before anyone joins).
+                   SELECT cm.message
+                   FROM   chat_messages cm
+                   JOIN   chats c ON c.id = cm.chat_id
+                   WHERE  c.multiplayer_game_id = mg.id
+                     AND  cm.speaker_id = mg.host_user_id
+                   ORDER BY cm.created_at ASC
+                   LIMIT 1
+               ) AS invite_message
         FROM multiplayer_games mg
         JOIN users u ON u.id = mg.host_user_id
         WHERE mg.intended_guest_id = $1::uuid
@@ -307,10 +359,73 @@ async def incoming(
                 board_size=r["board_size"],
                 created_at=r["created_at"],
                 expires_at=r["expires_at"],
+                message=r["invite_message"],
             )
             for r in rows
         ]
     )
+
+
+@router.post("/incoming/{code}/decline", response_model=DeclineResponse)
+async def decline_invite(
+    code: str,
+    user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> DeclineResponse:
+    """Decline a pending invite addressed to the caller.
+
+    Sets `state='cancelled'` on the multiplayer_games row and posts a
+    polite chat message from the caller (`DECLINE_MESSAGE`) into the
+    paired chat, so the inviter can see the response when they revisit
+    the game's chat log. Validates that the caller IS the intended
+    guest — 403 otherwise to keep random users from cancelling
+    invites they were never offered.
+
+    404 — code not found
+    403 — caller isn't the intended_guest_id
+    409 — game isn't in `waiting` state any more (already joined,
+          expired, or cancelled by someone else)
+    """
+    caller_id = str(user["id"])
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                """
+                SELECT mg.id, mg.intended_guest_id, mg.state,
+                       c.id AS chat_id
+                FROM   multiplayer_games mg
+                JOIN   chats c ON c.multiplayer_game_id = mg.id
+                WHERE  mg.code = $1
+                FOR UPDATE OF mg
+                """,
+                code,
+            )
+            if row is None:
+                raise HTTPException(status.HTTP_404_NOT_FOUND, "invite_not_found")
+            if row["intended_guest_id"] is None or str(row["intended_guest_id"]) != caller_id:
+                raise HTTPException(status.HTTP_403_FORBIDDEN, "not_invited")
+            if row["state"] != "waiting":
+                raise HTTPException(status.HTTP_409_CONFLICT, "invite_not_pending")
+            await conn.execute(
+                """
+                UPDATE multiplayer_games
+                SET    state      = 'cancelled',
+                       version    = version + 1,
+                       updated_at = NOW()
+                WHERE  id = $1::uuid
+                """,
+                str(row["id"]),
+            )
+            await conn.execute(
+                """
+                INSERT INTO chat_messages (chat_id, speaker_id, message)
+                VALUES ($1::uuid, $2::uuid, $3)
+                """,
+                str(row["chat_id"]),
+                caller_id,
+                DECLINE_MESSAGE,
+            )
+    return DeclineResponse(declined=True)
 
 
 # ---------------------------------------------------------------------------

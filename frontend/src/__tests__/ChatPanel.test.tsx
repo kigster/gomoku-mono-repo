@@ -203,6 +203,87 @@ describe('ChatPanel — in-game persistence', () => {
     expect(seen[0]).toMatch(/offset=20/)
   })
 
+  it('/invite forwards an optional message in the request body', async () => {
+    const fetchSpy = global.fetch as unknown as ReturnType<typeof vi.fn>
+    const captured: Array<{ url: string; body: BodyInit | null }> = []
+    fetchSpy.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/chat/invite')) {
+        captured.push({ url, body: init?.body ?? null })
+        return new Response(
+          JSON.stringify({
+            invited_code: 'ABCDEF',
+            invite_url: 'http://api.test/play/ABCDEF',
+            target_state: 'idle',
+            delivered: true,
+          }),
+          { status: 200 },
+        )
+      }
+      return new Response(JSON.stringify({}), { status: 200 })
+    })
+    const user = userEvent.setup()
+    renderPanel({ gameCode: null, variant: 'dark' })
+    const input = screen.getByLabelText(/chat message/i)
+    await user.type(input, '/invite @bob hey wanna play?')
+    await user.click(screen.getByRole('button', { name: /send/i }))
+    await waitFor(() => expect(captured.length).toBeGreaterThan(0))
+    const parsed = JSON.parse(captured[0].body as string)
+    expect(parsed).toEqual({ target_username: 'bob', message: 'hey wanna play?' })
+  })
+
+  it('/invite omits the message field when the user only typed a username', async () => {
+    const fetchSpy = global.fetch as unknown as ReturnType<typeof vi.fn>
+    const captured: Array<{ url: string; body: BodyInit | null }> = []
+    fetchSpy.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/chat/invite')) {
+        captured.push({ url, body: init?.body ?? null })
+        return new Response(
+          JSON.stringify({
+            invited_code: 'ABCDEF',
+            invite_url: 'http://api.test/play/ABCDEF',
+            target_state: 'idle',
+            delivered: true,
+          }),
+          { status: 200 },
+        )
+      }
+      return new Response(JSON.stringify({}), { status: 200 })
+    })
+    const user = userEvent.setup()
+    renderPanel({ gameCode: null, variant: 'dark' })
+    const input = screen.getByLabelText(/chat message/i)
+    await user.type(input, '/invite @bob')
+    await user.click(screen.getByRole('button', { name: /send/i }))
+    await waitFor(() => expect(captured.length).toBeGreaterThan(0))
+    const parsed = JSON.parse(captured[0].body as string)
+    expect(parsed).toEqual({ target_username: 'bob' })
+  })
+
+  it('masks a 403 invite response as a generic "could not deliver" caption', async () => {
+    const fetchSpy = global.fetch as unknown as ReturnType<typeof vi.fn>
+    fetchSpy.mockImplementation(async (url: string) => {
+      if (url.endsWith('/chat/invite')) {
+        return new Response(
+          JSON.stringify({ detail: 'cannot_invite_blocker' }),
+          { status: 403 },
+        )
+      }
+      return new Response(JSON.stringify({}), { status: 200 })
+    })
+    const user = userEvent.setup()
+    renderPanel({ gameCode: null, variant: 'dark' })
+    const input = screen.getByLabelText(/chat message/i)
+    await user.type(input, '/invite @bob')
+    await user.click(screen.getByRole('button', { name: /send/i }))
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Sorry, we couldn't deliver your message/i),
+      ).toBeInTheDocument(),
+    )
+    // Must NOT leak the underlying detail to the user.
+    expect(screen.queryByText(/cannot_invite_blocker/)).toBeNull()
+  })
+
   it('renders a polled peer message after it arrives via the hook', async () => {
     // Simulate the polling hook surfacing a message from the opponent.
     messagesRef.current = [
