@@ -386,13 +386,14 @@ export default function ChatPanel ({
       return
     }
 
-    // /who is local-only (no persistence) — it's a server-backed lookup
-    // that renders an ephemeral system block, not a message anyone else
-    // needs to see in their chat log.
+    // /who is a UI query — local-only, never persisted. Deliberately
+    // no "@USER /who" echo bubble: rendering one creates the false
+    // expectation that the opponent will see it too (they don't, and
+    // the asymmetry is confusing). The system-message block produced
+    // by `dispatchWho` is the entire visible output of the command.
     const whoMatch = WHO_RE.exec(text)
     if (whoMatch) {
       const page = whoMatch[1] ? Math.max(1, parseInt(whoMatch[1], 10)) : 1
-      pushMessage({ speaker: meUsername, me: true, body: page === 1 ? '/who' : `/who ${page}` })
       await dispatchWho(page)
       return
     }
