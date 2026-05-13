@@ -101,28 +101,38 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Non-destructive partial downgrade.
+
+    Migrations are DDL-only — we never DELETE data on rollback. That means
+    the column and three relaxed CHECKs come back to their pre-0013 shape,
+    but we deliberately do NOT restore the NOT NULL on `winner` /
+    `human_player`: any `in_progress` rows present at downgrade time would
+    have NULL there, and a `SET NOT NULL` would either fail outright or
+    require deleting rows. Operators who need the strict NOT NULL back
+    must explicitly handle the in_progress rows first (UPDATE to a
+    sentinel state or DELETE manually) — never as a side-effect of an
+    Alembic command.
+    """
     op.execute("DROP INDEX IF EXISTS games_in_progress_idx")
 
+    # Drop the conditional CHECKs added by 0013.
     op.execute("ALTER TABLE games DROP CONSTRAINT IF EXISTS games_total_moves_check")
     op.execute("ALTER TABLE games DROP CONSTRAINT IF EXISTS games_human_player_check")
     op.execute("ALTER TABLE games DROP CONSTRAINT IF EXISTS games_winner_check")
 
-    # Restore the strict shapes. Sweep stale rows first so the NOT NULL
-    # / CHECK enforcement doesn't fail on partial data — anything still
-    # in_progress was abandoned by virtue of the rollback.
-    op.execute("DELETE FROM games WHERE status <> 'completed'")
-    op.execute("ALTER TABLE games ALTER COLUMN winner SET NOT NULL")
-    op.execute("ALTER TABLE games ALTER COLUMN human_player SET NOT NULL")
+    # Re-add the strict pre-0013 CHECKs, but only as conditions that don't
+    # falsely fail on a NULL — IS DISTINCT FROM semantics let NULL slip
+    # through, which matches the relaxed NOT NULL we keep in place.
     op.execute(
         """
         ALTER TABLE games ADD CONSTRAINT games_winner_check
-            CHECK (winner IN ('X', 'O', 'draw'))
+            CHECK (winner IS NULL OR winner IN ('X', 'O', 'draw'))
         """
     )
     op.execute(
         """
         ALTER TABLE games ADD CONSTRAINT games_human_player_check
-            CHECK (human_player IN ('X', 'O'))
+            CHECK (human_player IS NULL OR human_player IN ('X', 'O'))
         """
     )
     op.execute(
@@ -131,5 +141,11 @@ def downgrade() -> None:
             CHECK (game_type <> 'ai' OR total_moves > 0)
         """
     )
+
+    # NOTE: `winner` and `human_player` stay nullable after downgrade.
+    # The DDL-only contract precludes a `DELETE ... WHERE status <>
+    # 'completed'` here, and `SET NOT NULL` would fail on any row that
+    # has NULL there. Operators who need NOT NULL strictly restored must
+    # cleanse those rows manually before SET NOT NULL.
 
     op.execute("ALTER TABLE games DROP COLUMN IF EXISTS status")
