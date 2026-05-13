@@ -199,6 +199,30 @@ resource "google_cloud_run_v2_service" "api" {
         value = var.custom_domain
       }
 
+      # Outbound email — password reset, future account notifications.
+      # `EMAIL_PROVIDER=stdout` (the default) logs rendered bodies to
+      # stdout instead of sending; flip to `sendgrid` and provide the
+      # API key in TF_VAR_sendgrid_api_key for real delivery.
+      env {
+        name  = "EMAIL_PROVIDER"
+        value = var.email_provider
+      }
+
+      env {
+        name  = "EMAIL_FROM"
+        value = var.email_from
+      }
+
+      env {
+        name  = "EMAIL_FROM_NAME"
+        value = var.email_from_name
+      }
+
+      env {
+        name  = "SENDGRID_API_KEY"
+        value = var.sendgrid_api_key
+      }
+
       startup_probe {
         http_get {
           path = "/health"
