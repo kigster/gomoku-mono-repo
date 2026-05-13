@@ -454,12 +454,15 @@ export default function ChatPanel ({
         header: 'bg-neutral-950 border-b border-neutral-800',
         headerEyebrow: 'text-neutral-400',
         headerName: peerUsername ? 'text-amber-400' : 'text-neutral-500',
-        // Scrollable transcript region — this is the part the user
-        // called out as "actual scrollable chat being light grey".
-        messagesBg: 'bg-neutral-200',
-        messages: 'scrollbar-thin scrollbar-thumb-neutral-400',
-        emptyState: 'text-neutral-600',
-        emptyAccent: 'text-blue-700',
+        // Scrollable transcript region — medium-grey (#777777) per the
+        // design feedback. Darker than the original light-grey so the
+        // amber speaker chips and the blue own-bubbles stay readable
+        // against it; peer bubbles switch from white to a near-white
+        // so they still have enough contrast.
+        messagesBg: 'bg-[#777777]',
+        messages: 'scrollbar-thin scrollbar-thumb-neutral-500',
+        emptyState: 'text-neutral-200',
+        emptyAccent: 'text-amber-300',
         inputRow: 'bg-neutral-950 border-t border-neutral-800',
         input:
           'bg-neutral-800 border border-neutral-700 text-neutral-100 placeholder:text-neutral-500 ' +
