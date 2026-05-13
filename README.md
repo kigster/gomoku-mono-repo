@@ -359,16 +359,91 @@ cp .env.sample .env
 $EDITOR .env
 ```
 
-| Key | What goes there |
-|---|---|
-| `PRODUCTION_DATABASE_URL` | Pooled Neon DSN |
-| `PRODUCTION_JWT_SECRET` | Generate with `just jwt-secret` |
-| `HONEYCOMB_INGEST_API_KEY` | "Ingest" key from Honeycomb → API Keys |
-| `HONEYCOMB_CONFIG_API_KEY` | "Configuration" key — used to post deploy markers |
-| `PROJECT_ID` | Your GCP project ID |
-| `REGION` | Default `us-central1` |
+##### Secrets reference
 
-Names use the `PRODUCTION_` prefix so they don't collide with the runtime config Pydantic reads inside the FastAPI app.
+The `.env` file at the repo root holds **deploy-time** keys. `bin/deploy` reads them and maps them into `TF_VAR_*` environment variables before invoking Terraform; Terraform then writes them to the Cloud Run service env. The FastAPI app at runtime reads these names directly off `process.env` — Pydantic settings load them from there, not from `.env`.
+
+| `.env` key | Runtime env on Cloud Run | Required? | What it is |
+|---|---|---|---|
+| `PROJECT_ID` | — (used by deploy only) | required | GCP project ID |
+| `REGION` | — (used by deploy only) | optional (defaults `us-central1`) | GCP region |
+| `PRODUCTION_DATABASE_URL` / `STAGING_DATABASE_URL` | `DATABASE_URL` | required | Pooled Postgres DSN. Use Neon's pooled connection (`pgbouncer=true`) — Cloud Run scales horizontally and direct connections will exhaust idle slots fast. |
+| `PRODUCTION_JWT_SECRET` / `STAGING_JWT_SECRET` | `JWT_SECRET` | required | HS256 signing key. Generate with `just jwt-secret`. **Staging must differ from production** so a leaked staging token never grants prod access. |
+| `PRODUCTION_CUSTOM_DOMAIN` / `STAGING_CUSTOM_DOMAIN` (or legacy `CUSTOM_DOMAIN`) | `CUSTOM_DOMAIN` | required | The public hostname Cloud Run is mapped to. Drives multiplayer invite URLs. |
+| `HONEYCOMB_INGEST_API_KEY` (or per-env `PRODUCTION_HONEYCOMB_INGEST_API_KEY`) | `HONEYCOMB_API_KEY` | optional | OTLP ingest key. Empty disables tracing without breaking the deploy. |
+| `HONEYCOMB_CONFIG_API_KEY` | — (used by deploy only) | optional | Posts deploy markers. Skip if you don't care about a marker line in the trace UI. |
+| `HONEYCOMB_DATASET` | `HONEYCOMB_DATASET` | optional | Only needed for the legacy 32-char Honeycomb "classic" keys; ignored for env-aware keys. |
+| `EMAIL_PROVIDER` | `EMAIL_PROVIDER` | optional (defaults `stdout`) | `stdout` logs rendered bodies (good for dev/staging); `sendgrid` sends via the SendGrid Web API. |
+| `EMAIL_FROM` | `EMAIL_FROM` | required when `EMAIL_PROVIDER=sendgrid` | A SendGrid-verified sender. Set one up at https://app.sendgrid.com/settings/sender_auth/senders before flipping the provider — unverified senders bounce with a 403. |
+| `EMAIL_FROM_NAME` | `EMAIL_FROM_NAME` | optional | Display name on the From header. |
+| `SENDGRID_API_KEY` (or per-env `PRODUCTION_SENDGRID_API_KEY`) | `SENDGRID_API_KEY` | required when `EMAIL_PROVIDER=sendgrid` | API key with **Mail Send** permission. Generate at https://app.sendgrid.com/settings/api_keys. Restrict scope — full-access keys are unnecessary. |
+
+##### Storing secrets in Google Secret Manager (recommended for production)
+
+The default flow above passes secret values through Terraform variables, which means they end up in `tfstate` (stored in GCS — encrypted at rest, but visible to anyone with bucket read access). For production you should keep the values in Secret Manager and grant only the Cloud Run runtime service account access. **One-time setup, then deploys reference the secret name instead of the value:**
+
+```bash
+# 1. Enable Secret Manager (idempotent — safe to re-run).
+gcloud services enable secretmanager.googleapis.com --project="${PROJECT_ID}"
+
+# 2. Create each secret. `--data-file=-` reads from stdin so the value
+#    never lands in your shell history. Repeat per secret name below.
+printf '%s' "$(cat /path/to/jwt-secret.txt)"        | gcloud secrets create gomoku-jwt-secret      --data-file=- --replication-policy=automatic --project="${PROJECT_ID}"
+printf '%s' "postgresql://…/gomoku?sslmode=require" | gcloud secrets create gomoku-database-url    --data-file=- --replication-policy=automatic --project="${PROJECT_ID}"
+printf '%s' "SG.…"                                  | gcloud secrets create gomoku-sendgrid-key    --data-file=- --replication-policy=automatic --project="${PROJECT_ID}"
+printf '%s' "hcaik_…"                               | gcloud secrets create gomoku-honeycomb-key   --data-file=- --replication-policy=automatic --project="${PROJECT_ID}"
+
+# 3. Find the Cloud Run runtime service account. By default it's the
+#    project's Compute Engine default SA unless you've changed it on
+#    the gomoku-api service. The grep below picks the active value.
+RUN_SA=$(gcloud run services describe gomoku-api \
+   --region="${REGION}" --project="${PROJECT_ID}" \
+   --format='value(spec.template.spec.serviceAccountName)')
+# Fallback when the field is unset on the service:
+RUN_SA="${RUN_SA:-$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')-compute@developer.gserviceaccount.com}"
+
+# 4. Grant secretAccessor on each secret to that SA.
+for s in gomoku-jwt-secret gomoku-database-url gomoku-sendgrid-key gomoku-honeycomb-key; do
+  gcloud secrets add-iam-policy-binding "$s" \
+    --member="serviceAccount:${RUN_SA}" \
+    --role=roles/secretAccessor \
+    --project="${PROJECT_ID}"
+done
+
+# 5. Rotate by adding a new version — the latest version is what the
+#    service reads on the next instance start.
+printf '%s' "new-jwt-value" | gcloud secrets versions add gomoku-jwt-secret --data-file=- --project="${PROJECT_ID}"
+```
+
+To switch the Cloud Run service from inline env values to Secret Manager references, change each `env { name = "X", value = var.x }` block in [`iac/cloud_run/main.tf`](iac/cloud_run/main.tf) to:
+
+```hcl
+env {
+  name = "JWT_SECRET"
+  value_source {
+    secret_key_ref {
+      secret  = "gomoku-jwt-secret"
+      version = "latest"
+    }
+  }
+}
+```
+
+…and drop the corresponding `TF_VAR_*` export from `bin/deploy` (the variable can stay defined in `variables.tf` for the `stdout`/dev path). The plain inline form is still committed because it's the lowest-friction onboarding for solo deploys; the Secret Manager form is the production recommendation.
+
+##### Verifying what's deployed
+
+```bash
+# Confirm the env block on the running service matches expectations.
+gcloud run services describe gomoku-api \
+  --region="${REGION}" --project="${PROJECT_ID}" \
+  --format='value(spec.template.spec.containers[0].env)' | tr ';' '\n'
+
+# List all secrets in the project.
+gcloud secrets list --project="${PROJECT_ID}"
+```
+
+Names use the `PRODUCTION_` / `STAGING_` prefix in `.env` so they don't collide with the runtime config Pydantic reads inside the FastAPI app — Cloud Run's runtime env uses the unprefixed names (`DATABASE_URL`, `JWT_SECRET`, …); the prefix-stripping happens in `bin/deploy`.
 
 #### Deploy
 
