@@ -217,6 +217,52 @@ async def test_online_view_classifies_human_battle(
     assert guest_row["state"] == "human-battle"
     assert host_row["active_game_id"] == mp_game_uuid
     assert guest_row["active_game_id"] == mp_game_uuid
+    # Each side sees the other in `opponent_username` so the chat
+    # panel can render "playing @<peer>" without another fetch.
+    assert host_row["opponent_username"] == second_registered_user["username"]
+    assert guest_row["opponent_username"] == "testplayer"
+
+
+@pytest.mark.asyncio
+async def test_online_endpoint_omits_opponent_for_non_human_battle(
+    client: AsyncClient, auth_headers
+):
+    """`opponent_username` is None for ai-battle and idle states."""
+    await client.post("/game/start", headers=auth_headers, json={})
+    body = (await client.get("/social/online", headers=auth_headers)).json()
+    me = next(u for u in body["users"] if u["username"] == "testplayer")
+    assert me["state"] == "ai-battle"
+    assert me["opponent_username"] is None
+
+
+@pytest.mark.asyncio
+async def test_online_endpoint_respects_15min_window(
+    client: AsyncClient, auth_headers, make_user
+):
+    """`/social/online` filters down to 15 minutes even though the
+    underlying view keeps an 8h window — older logins shouldn't
+    pollute the chat-panel /who list. We can't backdate the caller
+    (`get_current_user` resets their `last_seen_at` to NOW()), so we
+    seed a second user, backdate them, and assert they fall out of
+    the response while remaining in the view."""
+    await make_user("stale_user")
+    conn = await asyncpg.connect(TEST_DSN)
+    try:
+        await conn.execute(
+            "UPDATE users SET last_seen_at = NOW() - INTERVAL '20 minutes' "
+            "WHERE username = 'stale_user'"
+        )
+        view_row = await conn.fetchrow(
+            "SELECT 1 FROM online_users WHERE username = 'stale_user'"
+        )
+    finally:
+        await conn.close()
+    assert view_row is not None, "view should still surface 20-min-old user"
+
+    resp = await client.get("/social/online?limit=100", headers=auth_headers)
+    body = resp.json()
+    names = {u["username"] for u in body["users"]}
+    assert "stale_user" not in names
 
 
 @pytest.mark.asyncio

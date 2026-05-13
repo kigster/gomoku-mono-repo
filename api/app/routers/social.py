@@ -47,6 +47,12 @@ router = APIRouter(prefix="/social", tags=["social"])
 # users; narrower would miss real ones across a single network blip.
 WHO_PRESENCE_WINDOW_SECONDS = 60
 
+# /social/online's window for the chat-panel /who command. 15 minutes
+# is wide enough that someone who tabbed away mid-conversation still
+# shows up, but tight enough that yesterday's logins don't pollute
+# the "currently online" list.
+ONLINE_PRESENCE_WINDOW_MINUTES = 15
+
 
 class TargetUsernameRequest(BaseModel):
     """Body shape shared by all three endpoints."""
@@ -89,13 +95,16 @@ class OnlineUserEntry(BaseModel):
     """One row in /social/online. `state` is derived in the `online_users`
     view (see migration 0014). `active_game_id` is the FK target relevant
     to the current state — multiplayer_games.id for human-battle, games.id
-    for ai-battle, NULL otherwise. The chat panel's `/who` command renders
-    this list grouped by state."""
+    for ai-battle, NULL otherwise. `opponent_username` is populated only
+    when `state == 'human-battle'` — the other participant in the active
+    multiplayer game — so the chat panel can render
+    "playing @<opponent>" without a second round-trip."""
 
     user_id: str
     username: str
     state: Literal["human-battle", "ai-battle", "chatting", "idle"]
     active_game_id: str | None
+    opponent_username: str | None = None
     last_seen_at: datetime
 
 
@@ -338,21 +347,58 @@ async def online(
     game id, paginated. The chat panel's `/who` slash command renders
     a page at a time — default page size 10.
 
+    Tightens the view's 8h presence window down to
+    `ONLINE_PRESENCE_WINDOW_MINUTES` for the chat-panel UX — yesterday's
+    logins shouldn't pollute the "currently online" list even though
+    the view itself keeps them so other consumers can decide their own
+    cutoff.
+
     Excludes nobody — including the caller — so a user can spot
     themselves in the list and tell at a glance which state the view
     derived for them. The page is sorted by `last_seen_at DESC` (most-
     recently-active first) by the view itself.
+
+    For rows in `human-battle`, joins `multiplayer_games` + `users` to
+    resolve the other participant's username as `opponent_username`,
+    so the client can render "playing @<opponent>" without a second
+    round-trip per row.
     """
     rows = await pool.fetch(
-        """
-        SELECT user_id, username, state, active_game_id, last_seen_at
-        FROM   online_users
+        f"""
+        SELECT
+            ou.user_id,
+            ou.username,
+            ou.state,
+            ou.active_game_id,
+            ou.last_seen_at,
+            opp.username AS opponent_username
+        FROM   online_users ou
+        LEFT JOIN LATERAL (
+            SELECT u.username
+            FROM   multiplayer_games mg
+            JOIN   users u
+              ON   u.id = CASE
+                            WHEN mg.host_user_id = ou.user_id
+                                THEN mg.guest_user_id
+                            ELSE mg.host_user_id
+                          END
+            WHERE  mg.id = ou.active_game_id
+            LIMIT  1
+        ) opp ON ou.state = 'human-battle'
+        WHERE  ou.last_seen_at > NOW()
+               - INTERVAL '{ONLINE_PRESENCE_WINDOW_MINUTES} minutes'
         LIMIT $1 OFFSET $2
         """,
         limit,
         offset,
     )
-    total = await pool.fetchval("SELECT COUNT(*) FROM online_users")
+    total = await pool.fetchval(
+        f"""
+        SELECT COUNT(*) FROM online_users
+        WHERE last_seen_at > NOW()
+              - INTERVAL '{ONLINE_PRESENCE_WINDOW_MINUTES} minutes'
+        """
+    )
     return OnlineUsersResponse(
         users=[
             OnlineUserEntry(
@@ -360,6 +406,7 @@ async def online(
                 username=r["username"],
                 state=r["state"],
                 active_game_id=str(r["active_game_id"]) if r["active_game_id"] else None,
+                opponent_username=r["opponent_username"],
                 last_seen_at=r["last_seen_at"],
             )
             for r in rows
