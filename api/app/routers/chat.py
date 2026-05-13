@@ -212,7 +212,7 @@ async def invite(
             )
         except RuntimeError as exc:
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
-        code = row["code"]
+        code = row.code
 
     return InviteResponse(
         invited_code=code,
@@ -240,6 +240,30 @@ class IncomingInvite(BaseModel):
 
 class IncomingInvitesResponse(BaseModel):
     invites: list[IncomingInvite]
+
+
+# In-game chat-messages: maximum is enforced both here (Pydantic, for a
+# clean 422 with a Pydantic-shaped detail) and by the column CHECK on
+# `chat_messages.message` (defence in depth).
+CHAT_MESSAGE_MAX_LEN = 500
+
+
+class ChatMessage(BaseModel):
+    """One persisted chat message."""
+
+    id: str
+    speaker_username: str
+    speaker_is_me: bool
+    message: str
+    created_at: datetime
+
+
+class PostChatMessageRequest(BaseModel):
+    message: str = Field(min_length=1, max_length=CHAT_MESSAGE_MAX_LEN)
+
+
+class ChatMessagesResponse(BaseModel):
+    messages: list[ChatMessage]
 
 
 @router.get("/incoming", response_model=IncomingInvitesResponse)
@@ -283,6 +307,142 @@ async def incoming(
                 board_size=r["board_size"],
                 created_at=r["created_at"],
                 expires_at=r["expires_at"],
+            )
+            for r in rows
+        ]
+    )
+
+
+# ---------------------------------------------------------------------------
+# In-game chat messages
+# ---------------------------------------------------------------------------
+#
+# Per the design discussion, every multiplayer_games row has a paired
+# `chats` row from birth (created eagerly inside allocate_game; see
+# app/multiplayer/allocate.py). That removes the only race the message
+# endpoints would otherwise have to deal with: "first message arrives
+# before the chat row exists." We can take the FK target for granted.
+#
+# Slash commands (`/invite`, `/follow`, ...) are stored verbatim as
+# regular messages here — the client posts the literal text first and
+# then dispatches the slash side-effect on its own. "Store first,
+# post-process later" — even if the side-effect call fails or the
+# tab closes between calls, the user's intent stays in the chat log.
+
+
+async def _participant_chat(
+    conn: asyncpg.Connection, code: str, user_id: str
+) -> dict:
+    """Resolve the chat for `code` and verify that `user_id` is a
+    participant of the underlying multiplayer game.
+
+    Returns a dict with `chat_id` and `multiplayer_game_id`. Raises
+    HTTPException with the same shapes the rest of the multiplayer
+    routes use (404 / 403) so the frontend can reuse its translation
+    table.
+    """
+    row = await conn.fetchrow(
+        """
+        SELECT c.id AS chat_id, mg.id AS multiplayer_game_id,
+               mg.host_user_id, mg.guest_user_id
+        FROM   multiplayer_games mg
+        JOIN   chats c ON c.multiplayer_game_id = mg.id
+        WHERE  mg.code = $1
+        """,
+        code,
+    )
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "multiplayer_game_not_found")
+    is_host = str(row["host_user_id"]) == user_id
+    is_guest = row["guest_user_id"] is not None and str(row["guest_user_id"]) == user_id
+    if not (is_host or is_guest):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "not_a_participant")
+    return {
+        "chat_id": str(row["chat_id"]),
+        "multiplayer_game_id": str(row["multiplayer_game_id"]),
+    }
+
+
+@router.post("/{code}/messages", response_model=ChatMessage)
+async def post_chat_message(
+    code: str,
+    body: PostChatMessageRequest,
+    user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> ChatMessage:
+    """Persist a chat message for an in-progress multiplayer game.
+
+    "Store first, post-process later" — the message is written to
+    `chat_messages` verbatim, including any leading slash command. The
+    client dispatches slash side-effects after this POST returns so the
+    log captures intent even if the side-effect fails afterwards.
+    """
+    caller_id = str(user["id"])
+    async with pool.acquire() as conn:
+        ctx = await _participant_chat(conn, code, caller_id)
+        row = await conn.fetchrow(
+            """
+            INSERT INTO chat_messages (chat_id, speaker_id, message)
+            VALUES ($1::uuid, $2::uuid, $3)
+            RETURNING id, message, created_at
+            """,
+            ctx["chat_id"],
+            caller_id,
+            body.message,
+        )
+        # Echo the speaker's username back so the client can render the
+        # bubble without a follow-up lookup. We already know the speaker
+        # is the caller (we just inserted), so no extra JOIN.
+        return ChatMessage(
+            id=str(row["id"]),
+            speaker_username=user["username"],
+            speaker_is_me=True,
+            message=row["message"],
+            created_at=row["created_at"],
+        )
+
+
+@router.get("/{code}/messages", response_model=ChatMessagesResponse)
+async def list_chat_messages(
+    code: str,
+    since: int = 0,
+    user: dict = Depends(get_current_user),
+    pool=Depends(get_pool),
+) -> ChatMessagesResponse:
+    """Return chat messages for an in-progress multiplayer game.
+
+    `since` is the number of messages the client has already seen; we
+    return messages with offset >= since, ordered (created_at ASC,
+    id ASC). The frontend polls at the same wall-clock cadence as the
+    board state so the conversation stays in sync.
+    """
+    caller_id = str(user["id"])
+    async with pool.acquire() as conn:
+        ctx = await _participant_chat(conn, code, caller_id)
+        rows = await conn.fetch(
+            """
+            SELECT cm.id,
+                   cm.message,
+                   cm.created_at,
+                   cm.speaker_id,
+                   u.username AS speaker_username
+            FROM   chat_messages cm
+            JOIN   users u ON u.id = cm.speaker_id
+            WHERE  cm.chat_id = $1::uuid
+            ORDER BY cm.created_at ASC, cm.id ASC
+            OFFSET $2
+            """,
+            ctx["chat_id"],
+            since,
+        )
+    return ChatMessagesResponse(
+        messages=[
+            ChatMessage(
+                id=str(r["id"]),
+                speaker_username=r["speaker_username"],
+                speaker_is_me=str(r["speaker_id"]) == caller_id,
+                message=r["message"],
+                created_at=r["created_at"],
             )
             for r in rows
         ]

@@ -133,8 +133,12 @@ export async function cancelGame(
   return response.json() as Promise<MultiplayerGameView>
 }
 
-/** Returns the view, or `null` if the server returned 304 (no change since
- *  `sinceVersion`). */
+/** Returns the view, or `null` when the server signals "no update since
+ *  `sinceVersion`". We send `X-Accept-No-Change: 1` so a current server
+ *  replies with a 200 + `{no_change: true}` sentinel (clean console). A
+ *  legacy server that doesn't recognise the header replies with HTTP 304
+ *  instead — still handled here for forward/backward-compat across
+ *  deploy windows. */
 export async function getGame(
   token: string,
   code: string,
@@ -145,11 +149,21 @@ export async function getGame(
     url.searchParams.set('since_version', String(sinceVersion))
   }
   const response = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'X-Accept-No-Change': '1',
+    },
   })
   if (response.status === 304) return null
   if (!response.ok) throw await parseError(response)
-  return response.json()
+  const body = (await response.json()) as
+    | MultiplayerGameView
+    | MultiplayerGamePreview
+    | { no_change: true; version: number }
+  if (body && typeof body === 'object' && 'no_change' in body && body.no_change === true) {
+    return null
+  }
+  return body as MultiplayerGameView | MultiplayerGamePreview
 }
 
 export async function postMove(

@@ -30,6 +30,7 @@ timeout) ends a game.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -84,6 +85,25 @@ class WhoResponse(BaseModel):
     users: list[WhoEntry]
 
 
+class OnlineUserEntry(BaseModel):
+    """One row in /social/online. `state` is derived in the `online_users`
+    view (see migration 0014). `active_game_id` is the FK target relevant
+    to the current state — multiplayer_games.id for human-battle, games.id
+    for ai-battle, NULL otherwise. The chat panel's `/who` command renders
+    this list grouped by state."""
+
+    user_id: str
+    username: str
+    state: Literal["human-battle", "ai-battle", "chatting", "idle"]
+    active_game_id: str | None
+    last_seen_at: datetime
+
+
+class OnlineUsersResponse(BaseModel):
+    users: list[OnlineUserEntry]
+    total: int
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -105,13 +125,19 @@ async def _resolve_target(conn: asyncpg.Connection, username: str, *, caller_id:
 
 
 async def _terminate_active_game_between(
-    conn: asyncpg.Connection, user_a: str, user_b: str
+    conn: asyncpg.Connection, blocker_id: str, blockee_id: str
 ) -> bool:
-    """If there's a `waiting` or `in_progress` multiplayer game between A
-    and B, mark it terminated and return True. Otherwise return False.
+    """If there's a `waiting` or `in_progress` multiplayer game between
+    `blocker_id` and `blockee_id`, mark it terminated and return True.
+    Otherwise return False.
 
     Waiting → cancelled (the game never started, no result to record).
-    In-progress → abandoned (preserves the partial moves but ends the game).
+    In-progress → abandoned (preserves the partial moves but ends the
+    game). For the in_progress branch we also stamp
+    `abandoned_by_user_id` = blocker and `abandoned_at` = now() so the
+    UI can tell who left without leaking the fact that a block occurred
+    (the blocker is implicit context that the receiving frontend doesn't
+    surface — it just shows "your opponent has left").
     """
     row = await conn.fetchrow(
         """
@@ -122,7 +148,15 @@ async def _terminate_active_game_between(
                             END,
                version    = version + 1,
                updated_at = NOW(),
-               finished_at = NOW()
+               finished_at = NOW(),
+               abandoned_by_user_id = CASE state
+                              WHEN 'in_progress' THEN $1::uuid
+                              ELSE NULL
+                            END,
+               abandoned_at = CASE state
+                              WHEN 'in_progress' THEN NOW()
+                              ELSE NULL
+                            END
         WHERE  state IN ('waiting', 'in_progress')
           AND  (
                   (host_user_id = $1::uuid AND guest_user_id = $2::uuid)
@@ -130,8 +164,8 @@ async def _terminate_active_game_between(
               )
         RETURNING id
         """,
-        user_a,
-        user_b,
+        blocker_id,
+        blockee_id,
     )
     return row is not None
 
@@ -289,4 +323,46 @@ async def who(
             )
             for r in rows
         ]
+    )
+
+
+@router.get("/online", response_model=OnlineUsersResponse)
+async def online(
+    limit: int = Query(default=10, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    user: dict = Depends(get_current_user),  # noqa: ARG001 — auth-only
+    pool=Depends(get_pool),
+) -> OnlineUsersResponse:
+    """List users currently considered "online" (see migration 0014's
+    `online_users` view docstring) with their state and any active
+    game id, paginated. The chat panel's `/who` slash command renders
+    a page at a time — default page size 10.
+
+    Excludes nobody — including the caller — so a user can spot
+    themselves in the list and tell at a glance which state the view
+    derived for them. The page is sorted by `last_seen_at DESC` (most-
+    recently-active first) by the view itself.
+    """
+    rows = await pool.fetch(
+        """
+        SELECT user_id, username, state, active_game_id, last_seen_at
+        FROM   online_users
+        LIMIT $1 OFFSET $2
+        """,
+        limit,
+        offset,
+    )
+    total = await pool.fetchval("SELECT COUNT(*) FROM online_users")
+    return OnlineUsersResponse(
+        users=[
+            OnlineUserEntry(
+                user_id=str(r["user_id"]),
+                username=r["username"],
+                state=r["state"],
+                active_game_id=str(r["active_game_id"]) if r["active_game_id"] else None,
+                last_seen_at=r["last_seen_at"],
+            )
+            for r in rows
+        ],
+        total=int(total or 0),
     )

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useChatMessages } from '../hooks/useChatMessages'
 
 interface ChatMessage {
   id: string
@@ -28,6 +29,13 @@ interface ChatPanelProps {
   authToken: string
   // Backend base URL.
   apiBase: string
+  // Multiplayer game code — when set, messages are persisted via
+  // `/chat/{code}/messages` and polled so both players see them. When
+  // null (home-page right-rail), the panel falls back to local-only
+  // echo of typed text (no persistence, no peer delivery — slash
+  // commands still work because they post directly to their own
+  // endpoints).
+  gameCode?: string | null
   // Fires when a slash command terminated the active multiplayer game.
   // Today only `/block` triggers this — `/unfollow` is intentionally a
   // pure social-graph operation that does NOT cascade into game
@@ -75,6 +83,13 @@ const SLASH_RE: Record<SlashAction, RegExp> = {
 // `/help` takes no argument; matched separately so the user gets the
 // command list without typing a target username.
 const HELP_RE = /^\s*\/help\s*$/i
+// `/who` lists currently-online users, paginated. Optional integer for
+// the page index (1-based) so a user can ask for `/who 2` to see the
+// next 10. Bare `/who` is page 1.
+const WHO_RE = /^\s*\/who(?:\s+(\d+))?\s*$/i
+
+// Page size for /who — must match `limit` sent to GET /social/online.
+const WHO_PAGE_SIZE = 10
 
 // One short line per command, joined with newlines for a clean monospaced
 // help overlay in the chat. Kept terse — the chat panel is narrow.
@@ -83,6 +98,7 @@ const HELP_TEXT = [
   '/follow @user   — follow them (mutual = friends)',
   '/unfollow @user — drop the follow (does not end any game)',
   '/block @user    — block them (ends an active game)',
+  '/who [page]     — list online users (10 per page)',
   '/help           — this list',
 ].join('\n')
 
@@ -190,6 +206,7 @@ export default function ChatPanel ({
   peerUsername,
   authToken,
   apiBase,
+  gameCode = null,
   onActiveGameTerminated,
   variant = 'dark',
   height = 'card',
@@ -199,9 +216,52 @@ export default function ChatPanel ({
     ? 'h-full min-h-[20rem]'
     : 'h-[22rem] lg:h-[26rem]'
   const [draft, setDraft] = useState('')
+  // `messages` holds two kinds of entries interleaved by time:
+  //   - persisted rows mirrored from the chat-messages endpoint
+  //     (only present when `gameCode` is set), and
+  //   - ephemeral system captions (slash-command results, errors, /help
+  //     output) that live entirely in the panel and are never POSTed.
+  // The home-page right-rail with no gameCode also uses this list for
+  // local-only user echoes.
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [pending, setPending] = useState(false)
   const messagesRef = useRef<HTMLDivElement | null>(null)
+  // Persistence layer for in-game chat. Polls and exposes a `send` that
+  // stores first then returns the persisted row.
+  const {
+    messages: persistedMessages,
+    send: sendPersisted,
+  } = useChatMessages({
+    token: gameCode ? authToken : null,
+    code: gameCode,
+    apiBase,
+  })
+  // Mirror polled persisted rows into the unified list, deduping by id.
+  // Ephemeral system messages are kept in place around them.
+  useEffect(() => {
+    if (!gameCode) return
+    setMessages(prev => {
+      const have = new Set(prev.map(m => m.id))
+      const fresh = persistedMessages
+        .filter(p => !have.has(p.id))
+        .map<ChatMessage>(p => ({
+          id: p.id,
+          speaker: p.speaker_username,
+          me: p.speaker_is_me,
+          body: p.message,
+          at: p.created_at,
+        }))
+      if (fresh.length === 0) return prev
+      // Stable insert by created_at — persisted rows come in ASC order
+      // from the server, but local system captions may have interleaved
+      // timestamps in between (e.g. a /help typed while a peer message
+      // was in flight). A merge-sort once per arrival is cheap.
+      const merged = [...prev, ...fresh].sort(
+        (a, b) => new Date(a.at).getTime() - new Date(b.at).getTime(),
+      )
+      return merged
+    })
+  }, [persistedMessages, gameCode])
 
   // Always scroll the chat to the bottom on new message — matches the
   // dominant chat-app convention (latest content visible by default).
@@ -216,6 +276,56 @@ export default function ChatPanel ({
       ...prev,
       { ...m, id: crypto.randomUUID(), at: new Date().toISOString() },
     ])
+  }
+
+  // /who renders a list of currently-online users (backed by the
+  // `online_users` view via GET /social/online). Result is shown as an
+  // ephemeral system block — never persisted to chat_messages, since
+  // the snapshot is only meaningful at the time it was requested.
+  async function dispatchWho (page: number) {
+    setPending(true)
+    try {
+      const offset = (page - 1) * WHO_PAGE_SIZE
+      const resp = await fetch(
+        `${apiBase}/social/online?limit=${WHO_PAGE_SIZE}&offset=${offset}`,
+        { headers: { Authorization: `Bearer ${authToken}` } },
+      )
+      if (!resp.ok) throw new Error(await formatErrorDetail(resp))
+      const body = (await resp.json()) as {
+        users: Array<{ username: string; state: string; active_game_id: string | null }>
+        total: number
+      }
+      const lines: string[] = ['Online Users:', '']
+      if (body.users.length === 0) {
+        lines.push('  (nobody else is online right now)')
+      } else {
+        for (const u of body.users) {
+          lines.push(`  @${u.username} (${u.state})`)
+        }
+      }
+      const shown = offset + body.users.length
+      if (shown < body.total) {
+        lines.push('', `  [ /who ${page + 1} for next ${WHO_PAGE_SIZE}... ]`)
+      }
+      pushMessage({
+        speaker: 'system',
+        me: false,
+        body: lines.join('\n'),
+        system: true,
+        systemKind: 'info',
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'unknown error'
+      pushMessage({
+        speaker: 'system',
+        me: false,
+        body: `Could not list online users: ${msg}`,
+        system: true,
+        systemKind: 'error',
+      })
+    } finally {
+      setPending(false)
+    }
   }
 
   async function dispatchSlash (action: SlashAction, target: string) {
@@ -256,13 +366,14 @@ export default function ChatPanel ({
     }
   }
 
-  function handleSubmit (e: React.FormEvent) {
+  async function handleSubmit (e: React.FormEvent) {
     e.preventDefault()
     const text = draft.trim()
     if (!text) return
     setDraft('')
 
-    // /help is local-only — no server round-trip.
+    // /help is local-only — never persisted (it's a UI affordance, not
+    // part of the conversation).
     if (HELP_RE.test(text)) {
       pushMessage({ speaker: meUsername, me: true, body: '/help' })
       pushMessage({
@@ -275,26 +386,50 @@ export default function ChatPanel ({
       return
     }
 
-    // Try each slash command in turn. Each regex captures the target
-    // username in group 1; on a match we echo the literal command into
-    // the chat (so the user sees what they sent) and dispatch.
-    for (const action of Object.keys(SLASH_RE) as SlashAction[]) {
-      const m = SLASH_RE[action].exec(text)
-      if (!m) continue
-      const target = m[1]
-      pushMessage({
-        speaker: meUsername,
-        me: true,
-        body: `/${action} @${target}`,
-      })
-      void dispatchSlash(action, target)
+    // /who is local-only (no persistence) — it's a server-backed lookup
+    // that renders an ephemeral system block, not a message anyone else
+    // needs to see in their chat log.
+    const whoMatch = WHO_RE.exec(text)
+    if (whoMatch) {
+      const page = whoMatch[1] ? Math.max(1, parseInt(whoMatch[1], 10)) : 1
+      pushMessage({ speaker: meUsername, me: true, body: page === 1 ? '/who' : `/who ${page}` })
+      await dispatchWho(page)
       return
     }
 
-    pushMessage({ speaker: meUsername, me: true, body: text })
-    // When chat persistence ships, also POST this to the chat-messages
-    // endpoint. For now, draft-only (echo into the local list so the UI
-    // is testable end-to-end).
+    // "Store first, post-process later":
+    //   1. Persist the literal text to /chat/{code}/messages so the
+    //      opponent sees it (including literal `/invite @bob` for slash
+    //      commands).
+    //   2. After the POST succeeds, dispatch any slash-command side
+    //      effect. A failed side-effect surfaces as an ephemeral system
+    //      caption — the message itself stays in the log.
+    //
+    // Home-page right-rail has no `gameCode` → step 1 falls back to a
+    // local-only echo (no peer, no persistence).
+    if (gameCode) {
+      try {
+        await sendPersisted(text)
+      } catch (err) {
+        pushMessage({
+          speaker: 'system',
+          me: false,
+          body: `Could not send: ${err instanceof Error ? err.message : 'unknown error'}`,
+          system: true,
+          systemKind: 'error',
+        })
+        return
+      }
+    } else {
+      pushMessage({ speaker: meUsername, me: true, body: text })
+    }
+
+    for (const action of Object.keys(SLASH_RE) as SlashAction[]) {
+      const m = SLASH_RE[action].exec(text)
+      if (!m) continue
+      void dispatchSlash(action, m[1])
+      return
+    }
   }
 
   // Header label: yellow @username, or a friendlier placeholder when nobody
@@ -309,27 +444,37 @@ export default function ChatPanel ({
   // enough that a single colour palette per role is the clearest read.
   const styles = isLight
     ? {
-        shell: 'bg-white border-neutral-300 shadow-sm',
-        header: 'bg-neutral-50 border-b border-neutral-200',
-        headerEyebrow: 'text-neutral-500',
-        headerName: peerUsername ? 'text-blue-700' : 'text-neutral-400',
-        messages: 'scrollbar-thin scrollbar-thumb-neutral-300',
-        emptyState: 'text-neutral-500',
+        // In-game palette per design feedback: dark outer shell + header
+        // + input row (so the chat reads as part of the dark game panel)
+        // wrapping a **light-grey transcript** in the middle. Signature
+        // amber/yellow is reserved for the speaker chips and the header
+        // name. Messages are blue (own) and white (peer) so they pop off
+        // the grey transcript without competing with the yellow accent.
+        shell: 'bg-neutral-900 border-neutral-700 shadow-md shadow-black/30',
+        header: 'bg-neutral-950 border-b border-neutral-800',
+        headerEyebrow: 'text-neutral-400',
+        headerName: peerUsername ? 'text-amber-400' : 'text-neutral-500',
+        // Scrollable transcript region — this is the part the user
+        // called out as "actual scrollable chat being light grey".
+        messagesBg: 'bg-neutral-200',
+        messages: 'scrollbar-thin scrollbar-thumb-neutral-400',
+        emptyState: 'text-neutral-600',
         emptyAccent: 'text-blue-700',
-        inputRow: 'bg-neutral-50 border-t border-neutral-200',
+        inputRow: 'bg-neutral-950 border-t border-neutral-800',
         input:
-          'bg-white border border-neutral-300 text-neutral-900 placeholder:text-neutral-400 ' +
-          'focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-300/60',
+          'bg-neutral-800 border border-neutral-700 text-neutral-100 placeholder:text-neutral-500 ' +
+          'focus:outline-none focus:border-amber-500/70 focus:ring-1 focus:ring-amber-500/40',
         button:
-          'bg-blue-600 text-white hover:bg-blue-500 ' +
+          'bg-amber-500 text-neutral-900 hover:bg-amber-400 ' +
           'disabled:cursor-not-allowed disabled:opacity-50 ' +
-          'focus:outline-none focus:ring-2 focus:ring-blue-300/60',
+          'focus:outline-none focus:ring-2 focus:ring-amber-300/50',
       }
     : {
         shell: 'bg-neutral-900/70 border-neutral-700/80 shadow-inner shadow-black/30',
         header: 'bg-neutral-950 border-b border-neutral-800',
         headerEyebrow: 'text-neutral-500',
         headerName: peerUsername ? 'text-amber-300' : 'text-neutral-500',
+        messagesBg: '',
         messages: 'scrollbar-thin scrollbar-thumb-neutral-700',
         emptyState: 'text-neutral-500',
         emptyAccent: 'text-amber-300/90',
@@ -381,11 +526,14 @@ export default function ChatPanel ({
         <PresenceDot connected={!!peerUsername} />
       </header>
 
-      {/* Messages — scrolls. */}
+      {/* Messages — scrolls. The light-grey background here is the
+          "actual scrollable chat" the design feedback asked for; the
+          dark shell + header + input row frame it. */}
       <div
         ref={messagesRef}
         className={[
-          'flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-2',
+          'flex-1 min-h-0 overflow-y-auto px-3 py-3 space-y-3',
+          styles.messagesBg,
           styles.messages,
         ].join(' ')}
       >
@@ -449,7 +597,7 @@ function Message ({ m, variant }: { m: ChatMessage; variant: 'dark' | 'light' })
     // captions still look like the centred italic notes used elsewhere.
     const isMultiline = m.body.includes('\n')
     const bgBlock = isLight
-      ? 'bg-neutral-100 border border-neutral-200'
+      ? 'bg-white border border-neutral-300'
       : 'bg-neutral-800/60 border border-neutral-700/60'
     const errColor = isLight ? 'text-red-700' : 'text-red-400'
     const infoColor = isLight ? 'text-blue-700' : 'text-sky-300'
@@ -469,18 +617,27 @@ function Message ({ m, variant }: { m: ChatMessage; variant: 'dark' | 'light' })
   }
   // Convention follows iMessage / WhatsApp / Slack / Discord / Telegram:
   // the active user's bubbles sit on the RIGHT (white-on-blue), peer
-  // bubbles on the LEFT (neutral). The asymmetric corner radius
-  // ("tail" pointing toward the speaker's side) reinforces the side
-  // mapping at a glance.
+  // bubbles on the LEFT. The asymmetric corner radius ("tail" pointing
+  // toward the speaker's side) reinforces the side mapping at a glance.
+  //
+  // Speaker name is rendered as a small dark chip with amber text per
+  // the in-game design feedback — even when the transcript background
+  // is light grey, the username reads against a dark band in the
+  // signature colour. Message bubble font is bumped one Tailwind step
+  // (`text-sm` → `text-base`) for the in-game variant, which is roughly
+  // the +30% size increase the feedback asked for.
   const isMe = m.me
-  const speakerColor = isLight ? 'text-neutral-500' : 'text-neutral-500'
+  const speakerChip = isLight
+    ? 'bg-neutral-900 text-amber-400'
+    : 'bg-neutral-800 text-amber-300'
   const meBubble = isLight
     ? 'rounded-tr-sm bg-blue-600 text-white'
     : 'rounded-tr-sm bg-blue-600 text-white'
   const peerBubble = isLight
-    ? 'rounded-tl-sm bg-neutral-200 text-neutral-900 border border-neutral-300'
+    ? 'rounded-tl-sm bg-white text-neutral-900 border border-neutral-300'
     : 'rounded-tl-sm bg-neutral-800 text-neutral-100 border border-neutral-700/60'
-  const shadow = isLight ? 'shadow-sm shadow-neutral-300/40' : 'shadow-sm shadow-black/40'
+  const shadow = isLight ? 'shadow-sm shadow-black/30' : 'shadow-sm shadow-black/40'
+  const bubbleText = isLight ? 'text-base leading-snug' : 'text-sm leading-snug'
   return (
     <div
       className={[
@@ -490,16 +647,18 @@ function Message ({ m, variant }: { m: ChatMessage; variant: 'dark' | 'light' })
     >
       <span
         className={[
-          'text-[10px] uppercase tracking-[0.14em] mb-0.5',
-          speakerColor,
-          isMe ? 'mr-2' : 'ml-2',
+          'inline-block rounded-full px-2 py-0.5 mb-1',
+          'text-[11px] font-semibold uppercase tracking-[0.16em] font-heading',
+          speakerChip,
+          isMe ? 'mr-1' : 'ml-1',
         ].join(' ')}
       >
         @{m.speaker}
       </span>
       <div
         className={[
-          'rounded-2xl px-3.5 py-1.5 text-sm leading-snug',
+          'rounded-2xl px-4 py-2',
+          bubbleText,
           shadow,
           isMe ? meBubble : peerBubble,
         ].join(' ')}
