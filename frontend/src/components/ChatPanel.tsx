@@ -16,6 +16,10 @@ interface ChatMessage {
   system?: boolean
   // "info" (blue) | "error" (red) — colour of the system caption.
   systemKind?: 'info' | 'error'
+  // When true, the renderer drops the message's opacity so it fades out
+  // before being filtered from the list. Used by the /who output, which
+  // auto-disappears about 10 s after rendering.
+  fadingOut?: boolean
 }
 
 interface ChatPanelProps {
@@ -83,23 +87,30 @@ const SLASH_RE: Record<SlashAction, RegExp> = {
 // `/help` takes no argument; matched separately so the user gets the
 // command list without typing a target username.
 const HELP_RE = /^\s*\/help\s*$/i
-// `/who` lists currently-online users, paginated. Optional integer for
-// the page index (1-based) so a user can ask for `/who 2` to see the
-// next 10. Bare `/who` is page 1.
-const WHO_RE = /^\s*\/who(?:\s+(\d+))?\s*$/i
+// `/who` lists currently-online users, paginated. Accepts up to two
+// integers — the first is the offset into the result list (default 0),
+// the second is the page size (default 10). Bare `/who` is the top of
+// the list, 10 rows.
+const WHO_RE = /^\s*\/who(?:\s+(\d+))?(?:\s+(\d+))?\s*$/i
 
-// Page size for /who — must match `limit` sent to GET /social/online.
-const WHO_PAGE_SIZE = 10
+// Defaults for /who pagination, matching the spec
+// (`/who [offset (default 0)] [per-page (default 10)]`).
+const WHO_DEFAULT_OFFSET = 0
+const WHO_DEFAULT_PER_PAGE = 10
+// How long a /who output sticks around before fading. The fade itself
+// runs over the last second of the lifetime via a CSS opacity transition.
+const WHO_VISIBLE_MS = 10_000
+const WHO_FADE_MS = 1_000
 
 // One short line per command, joined with newlines for a clean monospaced
 // help overlay in the chat. Kept terse — the chat panel is narrow.
 const HELP_TEXT = [
-  '/invite @user   — invite the user to a game',
-  '/follow @user   — follow them (mutual = friends)',
-  '/unfollow @user — drop the follow (does not end any game)',
-  '/block @user    — block them (ends an active game)',
-  '/who [page]     — list online users (10 per page)',
-  '/help           — this list',
+  '/invite @user             — invite the user to a game',
+  '/follow @user             — follow them (mutual = friends)',
+  '/unfollow @user           — drop the follow (does not end any game)',
+  '/block @user              — block them (ends an active game)',
+  '/who [offset] [per-page]  — list online users (default 10 per page)',
+  '/help                     — this list',
 ].join('\n')
 
 type SlashAction = 'invite' | 'block' | 'follow' | 'unfollow'
@@ -167,6 +178,110 @@ const SLASH_SPECS: Record<SlashAction, SlashSpec> = {
     successCaption: target => `Unfollowed @${target}.`,
     errorCaption: (target, msg) => `Could not unfollow @${target}: ${msg}`,
   },
+}
+
+// Idle-time formatting for /who. Whole seconds only — the precision of
+// `last_seen_at` is already debounced server-side, so sub-second display
+// is misleading. Examples per the AGENT.md spec:
+//   33    → "33s"
+//   63    → "1m  3s"  (seconds zero-padded to width 2 with a leading
+//                       space so columns align across rows like
+//                       "3m 34s" / "10m 35s")
+//   635   → "10m 35s"
+export function formatIdleSeconds (seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds))
+  if (s < 60) return `${s}s`
+  const m = Math.floor(s / 60)
+  const rem = s % 60
+  return `${m}m ${String(rem).padStart(2, ' ')}s`
+}
+
+// State → label translation per the /who spec. The view returns
+// 'human-battle' / 'ai-battle' / 'chatting' / 'idle'; the spec only
+// surfaces three states to the user — playing AI, playing @opponent,
+// or inactive. Chatting collapses to 'inactive' (no chat-only state).
+function whoActivityLabel (
+  state: 'human-battle' | 'ai-battle' | 'chatting' | 'idle',
+  opponentUsername: string | null,
+): string {
+  if (state === 'ai-battle') return 'playing AI'
+  if (state === 'human-battle' && opponentUsername) {
+    return `playing @${opponentUsername}`
+  }
+  // human-battle with no opponent_username shouldn't happen in
+  // practice (the LATERAL join resolves it server-side), but the
+  // typed contract allows it — fall back to 'inactive' rather than
+  // surfacing 'playing @null'.
+  return 'inactive'
+}
+
+interface WhoRowInput {
+  username: string
+  state: 'human-battle' | 'ai-battle' | 'chatting' | 'idle'
+  opponent_username: string | null
+  last_seen_at: string
+}
+
+// Render the /who slash-command output: a monospace block with a
+// "Currently Online: Page X of Y" header, divider lines made of
+// em-dashes, one row per user (`  @name   <idle>  idle: <label>`),
+// and a "Total Currently Online: N" footer. Exported for the unit
+// test, which pins the exact format the spec calls out.
+export function renderWhoTable (
+  users: WhoRowInput[],
+  total: number,
+  offset: number,
+  perPage: number,
+): string {
+  const nowMs = Date.now()
+  const rows = users.map(u => {
+    const lastSeenMs = new Date(u.last_seen_at).getTime()
+    const idleSec = Number.isFinite(lastSeenMs)
+      ? Math.max(0, Math.floor((nowMs - lastSeenMs) / 1000))
+      : 0
+    return {
+      name: `@${u.username}`,
+      idle: formatIdleSeconds(idleSec),
+      label: whoActivityLabel(u.state, u.opponent_username),
+    }
+  })
+  const pageIndex = Math.floor(offset / perPage) + 1
+  const lastPage = total === 0 ? 1 : Math.ceil(total / perPage)
+  const header = `Currently Online:`
+  const pageNote = `Page ${pageIndex} of ${lastPage}`
+  if (rows.length === 0) {
+    return [
+      `${header}        ${pageNote}`,
+      `Total Currently Online: ${total}`,
+      '',
+      '  (nobody is online right now)',
+    ].join('\n')
+  }
+  const nameW = Math.max(...rows.map(r => r.name.length))
+  const idleW = Math.max(...rows.map(r => r.idle.length))
+  const bodyLines = rows.map(
+    r =>
+      `  ${r.name.padEnd(nameW, ' ')}  ${r.idle.padStart(idleW, ' ')} idle: ${r.label}`,
+  )
+  // Divider widened to the actual content width. `2 + nameW + 2 + idleW +
+  // 7 + max label width` matches `"  @name  idle idle: label"`.
+  const contentWidth = Math.max(
+    ...bodyLines.map(l => l.length),
+    `${header}        ${pageNote}`.length,
+  )
+  const divider = '—'.repeat(contentWidth)
+  // Pad between the header and the page note so the page note ends near
+  // the divider's right edge.
+  const headerLine = `${header}${' '.repeat(
+    Math.max(1, contentWidth - header.length - pageNote.length),
+  )}${pageNote}`
+  return [
+    headerLine,
+    divider,
+    ...bodyLines,
+    divider,
+    `Total Currently Online: ${total}`,
+  ].join('\n')
 }
 
 // FastAPI returns errors as `{detail: string | object}`. The /chat/invite
@@ -271,58 +386,74 @@ export default function ChatPanel ({
     node.scrollTop = node.scrollHeight
   }, [messages])
 
-  function pushMessage (m: Omit<ChatMessage, 'id' | 'at'>) {
+  function pushMessage (m: Omit<ChatMessage, 'id' | 'at'>): string {
+    const id = crypto.randomUUID()
     setMessages(prev => [
       ...prev,
-      { ...m, id: crypto.randomUUID(), at: new Date().toISOString() },
+      { ...m, id, at: new Date().toISOString() },
     ])
+    return id
+  }
+
+  // /who output auto-disappears. Two timers — one to set `fadingOut`
+  // (CSS opacity transition runs for WHO_FADE_MS), one to actually
+  // drop the row once invisible. Caller's responsibility to make sure
+  // `id` actually exists in the list when these fire — if the user
+  // clears the chat or scrolls away the timers will simply find
+  // nothing to update.
+  function scheduleWhoFadeout (id: string) {
+    window.setTimeout(() => {
+      setMessages(prev =>
+        prev.map(m => (m.id === id ? { ...m, fadingOut: true } : m)),
+      )
+    }, WHO_VISIBLE_MS - WHO_FADE_MS)
+    window.setTimeout(() => {
+      setMessages(prev => prev.filter(m => m.id !== id))
+    }, WHO_VISIBLE_MS)
   }
 
   // /who renders a list of currently-online users (backed by the
   // `online_users` view via GET /social/online). Result is shown as an
   // ephemeral system block — never persisted to chat_messages, since
-  // the snapshot is only meaningful at the time it was requested.
-  async function dispatchWho (page: number) {
+  // the snapshot is only meaningful at the time it was requested, and
+  // it fades away after WHO_VISIBLE_MS so it doesn't clutter the chat.
+  async function dispatchWho (offset: number, perPage: number) {
     setPending(true)
     try {
-      const offset = (page - 1) * WHO_PAGE_SIZE
       const resp = await fetch(
-        `${apiBase}/social/online?limit=${WHO_PAGE_SIZE}&offset=${offset}`,
+        `${apiBase}/social/online?limit=${perPage}&offset=${offset}`,
         { headers: { Authorization: `Bearer ${authToken}` } },
       )
       if (!resp.ok) throw new Error(await formatErrorDetail(resp))
       const body = (await resp.json()) as {
-        users: Array<{ username: string; state: string; active_game_id: string | null }>
+        users: Array<{
+          username: string
+          state: 'human-battle' | 'ai-battle' | 'chatting' | 'idle'
+          opponent_username: string | null
+          last_seen_at: string
+        }>
         total: number
       }
-      const lines: string[] = ['Online Users:', '']
-      if (body.users.length === 0) {
-        lines.push('  (nobody else is online right now)')
-      } else {
-        for (const u of body.users) {
-          lines.push(`  @${u.username} (${u.state})`)
-        }
-      }
-      const shown = offset + body.users.length
-      if (shown < body.total) {
-        lines.push('', `  [ /who ${page + 1} for next ${WHO_PAGE_SIZE}... ]`)
-      }
-      pushMessage({
+      const id = pushMessage({
         speaker: 'system',
         me: false,
-        body: lines.join('\n'),
+        body: renderWhoTable(body.users, body.total, offset, perPage),
         system: true,
         systemKind: 'info',
       })
+      scheduleWhoFadeout(id)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'unknown error'
-      pushMessage({
+      const id = pushMessage({
         speaker: 'system',
         me: false,
         body: `Could not list online users: ${msg}`,
         system: true,
         systemKind: 'error',
       })
+      // Errors fade too — the user can re-issue /who if they need
+      // the failure on screen for longer.
+      scheduleWhoFadeout(id)
     } finally {
       setPending(false)
     }
@@ -386,15 +517,19 @@ export default function ChatPanel ({
       return
     }
 
-    // /who is a UI query — local-only, never persisted. Deliberately
-    // no "@USER /who" echo bubble: rendering one creates the false
-    // expectation that the opponent will see it too (they don't, and
-    // the asymmetry is confusing). The system-message block produced
-    // by `dispatchWho` is the entire visible output of the command.
+    // /who is a UI query — local-only, never persisted. The
+    // system-message block produced by `dispatchWho` is the entire
+    // visible output of the command, and it fades away after about
+    // 10 s on its own.
     const whoMatch = WHO_RE.exec(text)
     if (whoMatch) {
-      const page = whoMatch[1] ? Math.max(1, parseInt(whoMatch[1], 10)) : 1
-      await dispatchWho(page)
+      const offsetArg = whoMatch[1]
+        ? Math.max(0, parseInt(whoMatch[1], 10))
+        : WHO_DEFAULT_OFFSET
+      const perPageArg = whoMatch[2]
+        ? Math.max(1, Math.min(100, parseInt(whoMatch[2], 10)))
+        : WHO_DEFAULT_PER_PAGE
+      await dispatchWho(offsetArg, perPageArg)
       return
     }
 
@@ -542,7 +677,7 @@ export default function ChatPanel ({
         ].join(' ')}
       >
         {messages.length === 0 && (
-          <p className={['text-center text-xs italic mt-4', styles.emptyState].join(' ')}>
+          <p className={['text-center text-xs mt-4', styles.emptyState].join(' ')}>
             No messages yet. Say hi, type{' '}
             <code className={['font-mono', styles.emptyAccent].join(' ')}>
               /invite @username
@@ -598,7 +733,7 @@ function Message ({ m, variant }: { m: ChatMessage; variant: 'dark' | 'light' })
   if (m.system) {
     // Multi-line system output (e.g. /help) is rendered in a monospaced
     // block so the column-aligned command list stays legible. Single-line
-    // captions still look like the centred italic notes used elsewhere.
+    // captions get the centred caption styling used elsewhere.
     const isMultiline = m.body.includes('\n')
     const bgBlock = isLight
       ? 'bg-white border border-neutral-300'
@@ -611,8 +746,12 @@ function Message ({ m, variant }: { m: ChatMessage; variant: 'dark' | 'light' })
           'whitespace-pre-wrap text-xs px-3 py-2 rounded-md mx-2',
           isMultiline
             ? `font-mono text-left ${bgBlock}`
-            : 'italic text-center font-sans bg-transparent border-0',
+            : 'text-center font-sans bg-transparent border-0',
           m.systemKind === 'error' ? errColor : infoColor,
+          // /who output is ephemeral — once flagged for fadeout we run
+          // an opacity transition over WHO_FADE_MS before it's removed.
+          'transition-opacity ease-out duration-1000',
+          m.fadingOut ? 'opacity-0' : 'opacity-100',
         ].join(' ')}
       >
         {m.body}

@@ -128,14 +128,30 @@ describe('ChatPanel — in-game persistence', () => {
   })
 
   it('/who GETs /social/online and renders the formatted list', async () => {
+    const now = new Date()
     const fetchSpy = global.fetch as unknown as ReturnType<typeof vi.fn>
     fetchSpy.mockImplementation(async (url: string) => {
       if (url.includes('/social/online')) {
         return new Response(
           JSON.stringify({
             users: [
-              { user_id: 'u1', username: 'alice', state: 'idle', active_game_id: null },
-              { user_id: 'u2', username: 'bob', state: 'human-battle', active_game_id: 'g1' },
+              {
+                user_id: 'u1',
+                username: 'alice',
+                state: 'idle',
+                active_game_id: null,
+                opponent_username: null,
+                // 5 s ago — "5s" in the idle column.
+                last_seen_at: new Date(now.getTime() - 5_000).toISOString(),
+              },
+              {
+                user_id: 'u2',
+                username: 'bob',
+                state: 'human-battle',
+                active_game_id: 'g1',
+                opponent_username: 'carol',
+                last_seen_at: new Date(now.getTime() - 65_000).toISOString(),
+              },
             ],
             total: 2,
           }),
@@ -151,14 +167,40 @@ describe('ChatPanel — in-game persistence', () => {
     await user.type(input, '/who')
     await user.click(screen.getByRole('button', { name: /send/i }))
     await waitFor(() =>
-      expect(screen.getByText(/Online Users:/)).toBeInTheDocument(),
+      expect(screen.getByText(/Currently Online:/)).toBeInTheDocument(),
     )
-    expect(screen.getByText(/@alice \(idle\)/)).toBeInTheDocument()
-    expect(screen.getByText(/@bob \(human-battle\)/)).toBeInTheDocument()
+    const block = screen.getByText(/Currently Online:/)
+    expect(block.textContent).toMatch(/Page 1 of 1/)
+    // alice is idle → "inactive"; bob is in a multiplayer game with
+    // carol → "playing @carol". /social/online provided opponent_username.
+    expect(block.textContent).toMatch(/@alice\s+\d+s idle: inactive/)
+    expect(block.textContent).toMatch(/@bob\s+1m\s+\d+s idle: playing @carol/)
+    expect(block.textContent).toMatch(/Total Currently Online: 2/)
     // No "@alice /who" echo bubble — /who is a UI query, not a message.
-    // The literal "/who" text should NOT appear as the user's own bubble
-    // alongside the system block.
     expect(screen.queryByText('/who')).toBeNull()
+  })
+
+  it('/who with explicit offset and per-page passes them to /social/online', async () => {
+    const fetchSpy = global.fetch as unknown as ReturnType<typeof vi.fn>
+    const seen: string[] = []
+    fetchSpy.mockImplementation(async (url: string) => {
+      if (url.includes('/social/online')) {
+        seen.push(url)
+        return new Response(
+          JSON.stringify({ users: [], total: 0 }),
+          { status: 200 },
+        )
+      }
+      return new Response(JSON.stringify({}), { status: 200 })
+    })
+    const user = userEvent.setup()
+    renderPanel({ gameCode: null, variant: 'dark' })
+    const input = screen.getByLabelText(/chat message/i)
+    await user.type(input, '/who 20 5')
+    await user.click(screen.getByRole('button', { name: /send/i }))
+    await waitFor(() => expect(seen.length).toBeGreaterThan(0))
+    expect(seen[0]).toMatch(/limit=5/)
+    expect(seen[0]).toMatch(/offset=20/)
   })
 
   it('renders a polled peer message after it arrives via the hook', async () => {
