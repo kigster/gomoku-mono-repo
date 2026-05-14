@@ -90,7 +90,7 @@ A) We are going to create a "listen for everything from the user" event handler,
 If the update or commit fails, log the error to the log, and return HTTP 500 with error description.
 
 ---
-  
+
 There is no need to update the user's `last_seen_at` elsewhere, except in the /login and /logout routes, which should set it to NOW() with timezone.
 
 ### 3. Chatting without the Game
@@ -105,7 +105,7 @@ If @kate did not block @bob, then @kate gets a modal on her screen above all oth
 
 ---
 [  CHAT & GAME INVITATION! ]
- 
+
 Hey @kate! Another user @bob would like to chat and play a game with you. 
 
 [ conditional — if /invite @kate message ] actually had the message, it's displayed here like so:
