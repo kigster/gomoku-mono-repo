@@ -20,6 +20,7 @@ mod board;
 mod eval;
 mod game;
 mod json_api;
+mod telemetry;
 
 use std::io::Write;
 use std::sync::Arc;
@@ -33,6 +34,9 @@ use clap::Parser;
 use clap::builder::styling::{AnsiColor, Effects, Styles};
 use log::{Level, debug, error, info, warn};
 use nu_ansi_term::{Color, Style};
+use opentelemetry::Context;
+use opentelemetry::KeyValue;
+use opentelemetry::trace::{Span, Status, TraceContextExt, Tracer, mark_span_as_active};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;
 use tokio::sync::Semaphore;
@@ -250,37 +254,92 @@ async fn handle_play(
 ) -> HttpResponse {
     let request_start = Instant::now();
 
-    let body_str = match std::str::from_utf8(&body) {
-        Ok(s) => s.to_owned(),
-        Err(_) => {
-            warn!("invalid UTF-8 in request body ({} bytes)", body.len());
-            return HttpResponse::BadRequest()
-                .content_type("application/json")
-                .body(json_api::error_response("Invalid UTF-8 in request body"));
-        }
-    };
+    // Parent span for the whole request. Marked active so the two child
+    // spans below nest under it without explicit context plumbing.
+    let mut parent = telemetry::start_span("gomoku.play");
+    parent.set_attribute(KeyValue::new("http.route", "/gomoku/play"));
+    parent.set_attribute(KeyValue::new("http.method", "POST"));
+    parent.set_attribute(KeyValue::new("http.request.body_size", body.len() as i64));
+    let _parent_guard = mark_span_as_active(parent);
 
-    if body_str.is_empty() {
-        warn!("empty request body");
-        return HttpResponse::BadRequest()
-            .content_type("application/json")
-            .body(json_api::error_response("Request body is required"));
-    }
+    // Annotate the parent via the active context (we no longer own `parent`).
+    let parent_set = |kv: KeyValue| Context::current().span().set_attribute(kv);
+    let parent_status = |s: Status| Context::current().span().set_status(s);
 
-    debug!("received game state: {} bytes", body_str.len());
+    // ------------------------------------------------------------------
+    // request.parsing: receive bytes, UTF-8 check, JSON → GameState
+    // ------------------------------------------------------------------
+    let tracer = telemetry::tracer();
+    // Err variant carries an HttpResponse (>128 bytes); box it to satisfy
+    // clippy::result_large_err without churning the Ok path's size.
+    type ParseErr = Box<(&'static str, i64, HttpResponse)>;
+    let parse_outcome: Result<game::GameState, ParseErr> =
+        tracer.in_span("request.parsing", |cx| {
+            cx.span()
+                .set_attribute(KeyValue::new("body.bytes", body.len() as i64));
 
-    let mut game = match json_api::parse_game(&body_str) {
+            let body_str = match std::str::from_utf8(&body) {
+                Ok(s) => s,
+                Err(_) => {
+                    warn!("invalid UTF-8 in request body ({} bytes)", body.len());
+                    cx.span().set_status(Status::error("invalid_utf8"));
+                    let resp = HttpResponse::BadRequest()
+                        .content_type("application/json")
+                        .body(json_api::error_response("Invalid UTF-8 in request body"));
+                    return Err(Box::new(("invalid_utf8", 400_i64, resp)));
+                }
+            };
+
+            if body_str.is_empty() {
+                warn!("empty request body");
+                cx.span().set_status(Status::error("empty_body"));
+                let resp = HttpResponse::BadRequest()
+                    .content_type("application/json")
+                    .body(json_api::error_response("Request body is required"));
+                return Err(Box::new(("empty_body", 400_i64, resp)));
+            }
+
+            debug!("received game state: {} bytes", body_str.len());
+
+            match json_api::parse_game(body_str) {
+                Ok(g) => {
+                    cx.span()
+                        .set_attribute(KeyValue::new("board.size", g.board_size as i64));
+                    cx.span()
+                        .set_attribute(KeyValue::new("moves.played", g.move_history.len() as i64));
+                    Ok(g)
+                }
+                Err(e) => {
+                    warn!("failed to parse game: {}", e);
+                    cx.span().set_status(Status::error("parse_error"));
+                    let resp = HttpResponse::BadRequest()
+                        .content_type("application/json")
+                        .body(json_api::error_response(&e));
+                    Err(Box::new(("parse_error", 400_i64, resp)))
+                }
+            }
+        });
+
+    let mut game = match parse_outcome {
         Ok(g) => g,
-        Err(e) => {
-            warn!("failed to parse game: {}", e);
-            return HttpResponse::BadRequest()
-                .content_type("application/json")
-                .body(json_api::error_response(&e));
+        Err(boxed) => {
+            let (reason, status, resp) = *boxed;
+            parent_set(KeyValue::new("http.status_code", status));
+            parent_status(Status::error(reason));
+            return resp;
         }
     };
+
+    parent_set(KeyValue::new("board.size", game.board_size as i64));
+    parent_set(KeyValue::new(
+        "moves.played",
+        game.move_history.len() as i64,
+    ));
 
     if json_api::has_winner(&game) {
         debug!("game already finished — returning unchanged state");
+        parent_set(KeyValue::new("http.status_code", 200_i64));
+        parent_set(KeyValue::new("game.already_finished", true));
         let response_json = json_api::serialize_game(&game);
         return HttpResponse::Ok()
             .content_type("application/json")
@@ -293,7 +352,16 @@ async fn handle_play(
     } else {
         1
     };
+    let player_label = if ai_player == board::CELL_CROSSES {
+        "X"
+    } else {
+        "O"
+    };
+    parent_set(KeyValue::new("ai.player", player_label));
+
     if game.player_type[player_index] != game::PlayerType::AI {
+        parent_set(KeyValue::new("http.status_code", 400_i64));
+        parent_status(Status::error("non_ai_to_move"));
         return HttpResponse::BadRequest()
             .content_type("application/json")
             .body(json_api::error_response(
@@ -303,17 +371,15 @@ async fn handle_play(
 
     let saved_depth = game.max_depth;
     game.max_depth = game.depth_for_player[player_index];
+    let depth_for_search = game.max_depth;
+    let search_radius = game.search_radius;
 
     debug!(
         "ai-thinking: player={} move={} depth={} radius={}",
-        if ai_player == board::CELL_CROSSES {
-            "X"
-        } else {
-            "O"
-        },
+        player_label,
         game.move_history.len() + 1,
-        game.max_depth,
-        game.search_radius,
+        depth_for_search,
+        search_radius,
     );
 
     // Acquire a worker permit. Held only for the duration of the AI search;
@@ -322,6 +388,8 @@ async fn handle_play(
         Ok(p) => p,
         Err(_) => {
             error!("worker semaphore closed unexpectedly");
+            parent_set(KeyValue::new("http.status_code", 500_i64));
+            parent_status(Status::error("semaphore_closed"));
             return HttpResponse::InternalServerError()
                 .content_type("application/json")
                 .body(json_api::error_response("Server shutting down"));
@@ -333,8 +401,44 @@ async fn handle_play(
     let report_scoring = data.report_scoring;
     let state_for_release = data.clone();
 
-    // Run CPU-bound minimax on a blocking thread so it doesn't stall the runtime.
-    let result = tokio::task::spawn_blocking(move || run_search(game, ai_player)).await;
+    // ------------------------------------------------------------------
+    // move.computation: runs on a blocking thread. Capture the parent
+    // context here and reattach it inside the worker so the child span
+    // nests under gomoku.play even across the thread boundary.
+    // ------------------------------------------------------------------
+    let parent_cx = Context::current();
+    let result = tokio::task::spawn_blocking(move || {
+        let _cx_guard = parent_cx.attach();
+        let tracer = telemetry::tracer();
+        tracer.in_span("move.computation", |cx| {
+            cx.span()
+                .set_attribute(KeyValue::new("ai.player", player_label));
+            cx.span()
+                .set_attribute(KeyValue::new("ai.depth", depth_for_search as i64));
+            cx.span()
+                .set_attribute(KeyValue::new("ai.radius", search_radius as i64));
+            let r = run_search(game, ai_player);
+            match &r {
+                Ok(out) => {
+                    cx.span().set_attribute(KeyValue::new(
+                        "ai.moves_evaluated",
+                        out.moves_evaluated as i64,
+                    ));
+                    cx.span()
+                        .set_attribute(KeyValue::new("ai.elapsed_seconds", out.elapsed_time));
+                    cx.span()
+                        .set_attribute(KeyValue::new("ai.move_type", out.move_type.clone()));
+                    cx.span()
+                        .set_attribute(KeyValue::new("ai.best_x", out.best_x as i64));
+                    cx.span()
+                        .set_attribute(KeyValue::new("ai.best_y", out.best_y as i64));
+                }
+                Err(e) => cx.span().set_status(Status::error(e.clone())),
+            }
+            r
+        })
+    })
+    .await;
     drop(permit);
     state_for_release.refresh_busy();
 
@@ -352,12 +456,16 @@ async fn handle_play(
         Ok(Ok(v)) => v,
         Ok(Err(e)) => {
             error!("ai compute failure: {}", e);
+            parent_set(KeyValue::new("http.status_code", 500_i64));
+            parent_status(Status::error("ai_compute_failure"));
             return HttpResponse::InternalServerError()
                 .content_type("application/json")
                 .body(json_api::error_response(&e));
         }
         Err(join_err) => {
             error!("ai compute task panicked: {}", join_err);
+            parent_set(KeyValue::new("http.status_code", 500_i64));
+            parent_status(Status::error("ai_compute_panic"));
             return HttpResponse::InternalServerError()
                 .content_type("application/json")
                 .body(json_api::error_response("AI compute task panicked"));
@@ -376,6 +484,8 @@ async fn handle_play(
         opp_score,
     ) {
         error!("failed to apply ai move at [{},{}]", best_x, best_y);
+        parent_set(KeyValue::new("http.status_code", 500_i64));
+        parent_status(Status::error("apply_move_failed"));
         return HttpResponse::InternalServerError()
             .content_type("application/json")
             .body(json_api::error_response("Failed to apply AI move"));
@@ -438,6 +548,20 @@ async fn handle_play(
             w,
             game.move_history.len()
         );
+    }
+
+    parent_set(KeyValue::new("http.status_code", 200_i64));
+    parent_set(KeyValue::new("ai.move_type", move_type.clone()));
+    parent_set(KeyValue::new("ai.elapsed_seconds", elapsed_time));
+    parent_set(KeyValue::new("ai.moves_evaluated", moves_evaluated as i64));
+    parent_set(KeyValue::new("ai.depth", player_depth as i64));
+    parent_set(KeyValue::new("request.queue_wait_ms", queue_wait_ms));
+    parent_set(KeyValue::new(
+        "request.latency_seconds",
+        request_latency_secs,
+    ));
+    if let Some(w) = winner_label {
+        parent_set(KeyValue::new("game.winner", w));
     }
 
     let report_ref = if report_scoring {
@@ -548,6 +672,10 @@ async fn main() -> std::io::Result<()> {
     let with_color = !cli.no_color && std::env::var("NO_COLOR").is_err();
     install_logger(&cli.log_level, cli.log_file.as_deref(), with_color)?;
 
+    // Honeycomb / OpenTelemetry. Silent no-op unless the two PRODUCTION_*
+    // env vars are set; safe to call before any spans are opened.
+    let telemetry_enabled = telemetry::init_tracer(DAEMON_VERSION);
+
     let (host, port) = parse_bind_address(&cli.bind).unwrap_or_else(|e| {
         eprintln!("Error: {}", e);
         eprintln!("Expected format: host:port or just port");
@@ -563,8 +691,16 @@ async fn main() -> std::io::Result<()> {
         info!("scoring reports enabled in JSON responses");
     }
     info!(
-        "config: workers={} (detected_cores={}) report_scoring={} log_level={}",
-        workers, detected_cores, cli.report_scoring, cli.log_level
+        "config: workers={} (detected_cores={}) report_scoring={} log_level={} telemetry={}",
+        workers,
+        detected_cores,
+        cli.report_scoring,
+        cli.log_level,
+        if telemetry_enabled {
+            "honeycomb"
+        } else {
+            "disabled"
+        }
     );
 
     if cli.daemonize {
@@ -590,7 +726,7 @@ async fn main() -> std::io::Result<()> {
 
     let state_for_server = app_state.clone();
 
-    HttpServer::new(move || {
+    let server_result = HttpServer::new(move || {
         let cors = Cors::default()
             .allow_any_origin()
             .allow_any_method()
@@ -609,5 +745,13 @@ async fn main() -> std::io::Result<()> {
     .workers(workers)
     .bind(format!("{}:{}", host, port))?
     .run()
-    .await
+    .await;
+
+    // Flush pending Honeycomb spans on graceful shutdown. No-op when the
+    // tracer was never installed (env vars unset).
+    if telemetry_enabled {
+        telemetry::shutdown();
+    }
+
+    server_result
 }

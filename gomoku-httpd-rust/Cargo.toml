@@ -23,6 +23,18 @@ rand = "0.9"
 nu-ansi-term = "0.50"
 rayon = "1"
 
+# OpenTelemetry → Honeycomb. Loaded unconditionally, but the tracer is only
+# installed when PRODUCTION_HONEYCOMB_API_KEY and PRODUCTION_HONEYCOMB_DATASET
+# are both set in the process environment (see src/telemetry.rs).
+opentelemetry = "0.22"
+opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.15", default-features = false, features = [
+    "trace",
+    "http-proto",
+    "reqwest-client",
+    "reqwest-rustls",
+] }
+
 [profile.release]
 opt-level = 3
 lto = true
