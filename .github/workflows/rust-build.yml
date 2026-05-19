@@ -2,9 +2,10 @@ name: Rust Build Lint and Tests
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
+    paths: ['gomoku-httpd-rust/**', '.github/workflows/rust-build.yml']
   pull_request:
-    branches: [main]
+    paths: ['gomoku-httpd-rust/**', '.github/workflows/rust-build.yml']
   workflow_dispatch:
 
 concurrency:
