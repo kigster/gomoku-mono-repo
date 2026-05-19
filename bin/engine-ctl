@@ -139,13 +139,27 @@ function daemons-start() {
 
   mkdir -p log
 
+  # GOMOKUD_BACKGROUND=1 (set by gctl when the rust engine is selected)
+  # background-launches each worker. The C binary daemonizes itself via
+  # -d (forks); the rust binary's -d is a no-op, so we have to background
+  # it from the shell or this loop would block on the first iteration.
+  # Defaults to 0 to preserve C-engine behavior.
+  local background="${GOMOKUD_BACKGROUND:-0}"
+
   for ((i = 0; i < nproc; i++)); do
     port=$((DEFAULT_PORT + i))
     haproxy_port=$((DEFAULT_PORT + i + 100))
     cmd="${GOMOKUD_EXECUTABLE} -b ${DEFAULT_HOST}:${port} -a ${haproxy_port} -d ${DEFAULT_FLAGS}"
 
     ${flag_verbose} && echo -e -n "${txtgrn}booting: [${cmd}] ... ${clr}"
-    eval "${cmd}" &>/dev/null
+    if [[ "${background}" == "1" ]]; then
+      # Detach via nohup + & + disown so the worker survives this script
+      # exiting and we never block on its lifetime.
+      nohup bash -c "${cmd}" </dev/null &>/dev/null &
+      disown
+    else
+      eval "${cmd}" &>/dev/null
+    fi
     ${flag_verbose} && echo -e "with PID ${txtpur}$!${clr}, exit code $?"
   done
 

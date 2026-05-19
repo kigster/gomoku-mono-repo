@@ -79,17 +79,25 @@ export GOMOKU_ENGINE="${GOMOKU_ENGINE:-c}"
 # current GOMOKU_ENGINE so engine-ctl picks up the right daemon. The Rust
 # variant is the relocatable copy under ./bin/, while the C variant is
 # resolved through $PATH (engine-ctl falls back to ./gomoku-httpd if needed).
+#
+# engine-ctl already puts `-d` on every worker's command line (CLI parity
+# with the C binary). The C process honors -d by fork()ing itself into
+# the background; the Rust process keeps -d as a no-op. So when -r is in
+# effect we additionally set GOMOKUD_BACKGROUND=1, which tells engine-ctl
+# to background-launch each worker from the shell (nohup + & + disown).
 engine.apply() {
   case "${GOMOKU_ENGINE}" in
   rust)
     export GOMOKUD_BINARY="gomoku-httpd-rust"
     export GOMOKUD_EXECUTABLE="${PROJECT_DIR}/bin/gomoku-httpd-rust"
     export GOMOKUD_BINARY_REGEX="[g]omoku-httpd-rust"
+    export GOMOKUD_BACKGROUND=1
     ;;
   c | *)
     export GOMOKUD_BINARY="gomoku-httpd"
     export GOMOKUD_EXECUTABLE="${PROJECT_DIR}/bin/gomoku-httpd"
     export GOMOKUD_BINARY_REGEX="[g]omoku-httpd($|[^-])"
+    export GOMOKUD_BACKGROUND=0
     ;;
   esac
 }
@@ -961,8 +969,8 @@ ${bldblu}EXAMPLES:${clr}
   ${bldylw}${binary} start${clr}                          # All components, ${DEFAULT_WORKERS} C workers
   ${bldylw}${binary} start -w 16${clr}                    # All components, 16 workers
   ${bldylw}${binary} start -r${clr}                       # All components, Rust engine (max ${DEFAULT_WORKERS} workers)
-  ${bldylw}${binary} start -r gomoku${clr}                 # Only the Rust gomoku engine
-  ${bldylw}${binary} start gomoku api frontend${clr}       # Start specific components
+  ${bldylw}${binary} start -r gomoku${clr}                # Only the Rust gomoku engine
+  ${bldylw}${binary} start gomoku api frontend${clr}      # Start specific components
   ${bldylw}${binary} stop${clr}                           # Stop the entire cluster
   ${bldylw}${binary} stop api${clr}                       # Stop only FastAPI
   ${bldylw}${binary} status${clr}                         # Show all component status
