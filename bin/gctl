@@ -69,6 +69,42 @@ export STOP_ORDER
 export START_COMPONENTS=(nginx envoy gomoku api)
 
 # =============================================================================
+# Engine selection: "c" (default) or "rust"
+# =============================================================================
+
+# Default to the C engine. Overridable per-invocation via `start -c|-r`.
+export GOMOKU_ENGINE="${GOMOKU_ENGINE:-c}"
+
+# Set $GOMOKUD_BINARY / $GOMOKUD_EXECUTABLE / $GOMOKUD_BINARY_REGEX for the
+# current GOMOKU_ENGINE so engine-ctl picks up the right daemon. The Rust
+# variant is the relocatable copy under ./bin/, while the C variant is
+# resolved through $PATH (engine-ctl falls back to ./gomoku-httpd if needed).
+engine.apply() {
+  case "${GOMOKU_ENGINE}" in
+  rust)
+    export GOMOKUD_BINARY="gomoku-httpd-rust"
+    export GOMOKUD_EXECUTABLE="${PROJECT_DIR}/bin/gomoku-httpd-rust"
+    export GOMOKUD_BINARY_REGEX="[g]omoku-httpd-rust"
+    ;;
+  c | *)
+    export GOMOKUD_BINARY="gomoku-httpd"
+    export GOMOKUD_EXECUTABLE="${PROJECT_DIR}/bin/gomoku-httpd"
+    export GOMOKUD_BINARY_REGEX="[g]omoku-httpd($|[^-])"
+    ;;
+  esac
+}
+
+# Process-list pattern for gomoku daemons of the active engine. The Rust
+# pattern is a strict subset of the C pattern, so we encode each one
+# separately rather than reusing the broad [g]omoku-httpd match.
+engine.process-pattern() {
+  case "${GOMOKU_ENGINE}" in
+  rust) echo "[g]omoku-httpd-rust" ;;
+  *) echo "[g]omoku-httpd($|[[:space:]])" ;;
+  esac
+}
+
+# =============================================================================
 # Process Management — self-contained, no bashmatic dependency
 # =============================================================================
 
@@ -563,62 +599,80 @@ frontend.status() {
 # =============================================================================
 
 gomoku.start() {
-  local workers="${1:-${DEFAULT_WORKERS}}"
-  inf "Starting gomoku-httpd (${workers} workers)..."
+  engine.apply
+  local pattern
+  pattern="$(engine.process-pattern)"
+  local label="${GOMOKUD_BINARY}"
 
-  if cluster.is-running "[g]omoku-httpd" "gomoku-http-client"; then
-    info "Stopping existing gomoku-httpd instances first..."
+  local workers="${1:-${DEFAULT_WORKERS}}"
+  # The Rust engine is internally multi-core (it parallelizes the search
+  # across cores per request) — running more processes than CPUs would
+  # oversubscribe and slow everything down. Cap at the CPU count.
+  if [[ "${GOMOKU_ENGINE}" == "rust" && ${workers} -gt ${DEFAULT_WORKERS} ]]; then
+    warning "Capping Rust workers from ${workers} to ${DEFAULT_WORKERS} (one per CPU)."
+    workers=${DEFAULT_WORKERS}
+  fi
+
+  inf "Starting ${label} (${workers} workers)..."
+
+  if cluster.is-running "${pattern}" "gomoku-http-client"; then
+    info "Stopping existing ${label} instances first..."
     "$SCRIPT_DIR/engine-ctl" stop
     sleep 1
   else
-    inf "No existing gomoku-httpd instances found."
+    inf "No existing ${label} instances found."
   fi
 
-  if cluster.is-running "[g]omoku-httpd" "gomoku-http-client"; then
+  if cluster.is-running "${pattern}" "gomoku-http-client"; then
     ui.closer.not-ok:
-    error "Could not stop existing gomoku-httpd instances."
+    error "Could not stop existing ${label} instances."
     return 1
   else
-    inf "No existing gomoku-httpd instances found."
+    inf "No existing ${label} instances found."
   fi
 
   "$SCRIPT_DIR/engine-ctl" start -w "$workers"
   sleep 1
 
-  if cluster.is-running "[g]omoku-httpd" "gomoku-http-client"; then
+  if cluster.is-running "${pattern}" "gomoku-http-client"; then
     ui.closer.ok:
-    success "gomoku-httpd started (${workers} workers)."
+    success "${label} started (${workers} workers)."
   else
     ui.closer.not-ok:
-    error "gomoku-httpd failed to start."
+    error "${label} failed to start."
     return 1
   fi
 }
 
 gomoku.stop() {
-  inf "Stopping gomoku-httpd..."
+  engine.apply
+  local pattern
+  pattern="$(engine.process-pattern)"
+  local label="${GOMOKUD_BINARY}"
 
-  if ! cluster.is-running "[g]omoku-httpd" "gomoku-http-client"; then
+  inf "Stopping ${label}..."
+
+  if ! cluster.is-running "${pattern}" "gomoku-http-client"; then
     ui.closer.kind-of-ok:
-    success "gomoku-httpd is not running."
+    success "${label} is not running."
     return 0
   fi
 
   "$SCRIPT_DIR/engine-ctl" stop
   sleep 2
 
-  if cluster.is-running "[g]omoku-httpd" "gomoku-http-client"; then
-    cluster.kill "[g]omoku-httpd" "gomoku-http-client"
+  if cluster.is-running "${pattern}" "gomoku-http-client"; then
+    cluster.kill "${pattern}" "gomoku-http-client"
     sleep 1
   fi
 
-  if cluster.is-running "[g]omoku-httpd" "gomoku-http-client"; then
+  if cluster.is-running "${pattern}" "gomoku-http-client"; then
     ui.closer.not-ok:
-    error "Failed to stop gomoku-httpd."
+    error "Failed to stop ${label}."
     return 1
   fi
   ui.closer.ok:
-  success "gomoku-httpd stopped."
+  success "${label} stopped."
 }
 
 gomoku.restart() {
@@ -627,10 +681,15 @@ gomoku.restart() {
   gomoku.start
 }
 gomoku.status() {
-  component.status "gomoku-httpd" "[g]omoku-httpd" "gomoku-http-client"
-  if cluster.is-running "[g]omoku-httpd" "gomoku-http-client"; then
+  engine.apply
+  local pattern
+  pattern="$(engine.process-pattern)"
+  local label="${GOMOKUD_BINARY}"
+
+  component.status "${label}" "${pattern}" "gomoku-http-client"
+  if cluster.is-running "${pattern}" "gomoku-http-client"; then
     local -a pids
-    mapfile -t pids < <(cluster.pids "[g]omoku-httpd" "gomoku-http-client")
+    mapfile -t pids < <(cluster.pids "${pattern}" "gomoku-http-client")
     local count=${#pids[@]}
     info "  Checking ${count} instances:"
     local port
@@ -674,6 +733,14 @@ cmd_for_each() {
   local -a components=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
+    -c | --httpd-c)
+      export GOMOKU_ENGINE="c"
+      shift 1
+      ;;
+    -r | --httpd-rust)
+      export GOMOKU_ENGINE="rust"
+      shift 1
+      ;;
     *)
       if array.includes "$1" "${START_COMPONENTS[@]}"; then
         components+=("$1")
@@ -713,6 +780,14 @@ cmd_start() {
         return 1
       }
       ;;
+    -c | --httpd-c)
+      export GOMOKU_ENGINE="c"
+      shift 1
+      ;;
+    -r | --httpd-rust)
+      export GOMOKU_ENGINE="rust"
+      shift 1
+      ;;
     *)
       if array.includes "$1" "${START_COMPONENTS[@]}"; then
         components+=("$1")
@@ -726,6 +801,13 @@ cmd_start() {
   done
 
   [[ -z "$workers" ]] && workers=${DEFAULT_WORKERS}
+
+  # Rust engine: never spawn more processes than CPU cores.
+  if [[ "${GOMOKU_ENGINE}" == "rust" && ${workers} -gt ${DEFAULT_WORKERS} ]]; then
+    warning "Capping Rust workers from ${workers} to ${DEFAULT_WORKERS} (one per CPU)."
+    workers=${DEFAULT_WORKERS}
+  fi
+
   cmd_configs "$workers"
 
   if [[ ${#components[@]} -eq 0 ]]; then
@@ -843,10 +925,13 @@ ${bldblu}COMMANDS:${clr}
   ${bldylw}${binary} configs${clr}
 
   ${c}# Boot the entire cluster. Components are listed below.${clr}
-  ${bldylw}${binary} start [ -w <workers> ] [ <component> ... ] ${clr}
+  ${bldylw}${binary} start [ -c | -r ] [ -w <workers> ] [ <component> ... ] ${clr}
 
 ${bldblu}START OPTIONS:${clr}
   ${bldylw}-w, --workers <N>${clr}              Number of workers (default: ${DEFAULT_WORKERS})
+  ${bldylw}-c, --httpd-c${clr}                  Use the C gomoku-httpd binary (default)
+  ${bldylw}-r, --httpd-rust${clr}               Use the Rust gomoku-httpd-rust binary
+                                 (workers are capped at CPU count: ${DEFAULT_WORKERS})
   ${bldylw}component${clr}                      Item(s) from the following component list:
                                  $(array.join ", " "${START_COMPONENTS[@]}")
 
@@ -873,8 +958,10 @@ ${bldblu}COMPONENTS:${clr}
   ${bldylw}frontend${clr}   Vite React dev server (http://localhost:5173)
 
 ${bldblu}EXAMPLES:${clr}
-  ${bldylw}${binary} start${clr}                          # All components, ${DEFAULT_WORKERS} workers
+  ${bldylw}${binary} start${clr}                          # All components, ${DEFAULT_WORKERS} C workers
   ${bldylw}${binary} start -w 16${clr}                    # All components, 16 workers
+  ${bldylw}${binary} start -r${clr}                       # All components, Rust engine (max ${DEFAULT_WORKERS} workers)
+  ${bldylw}${binary} start -r gomoku${clr}                 # Only the Rust gomoku engine
   ${bldylw}${binary} start gomoku api frontend${clr}       # Start specific components
   ${bldylw}${binary} stop${clr}                           # Stop the entire cluster
   ${bldylw}${binary} stop api${clr}                       # Stop only FastAPI

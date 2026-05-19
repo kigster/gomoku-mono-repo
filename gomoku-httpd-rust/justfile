@@ -1,0 +1,336 @@
+# justfile
+#
+# Common commands for building, testing, linting, and
+# maintaining a Rust project.
+#
+# Usage:
+#   just
+#   just test
+#   just lint
+#   just fix
+
+set dotenv-load := true
+set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
+
+# Default target: print all available recipes.
+default:
+    @just --list
+
+# ---- Project metadata -------
+
+# Set these if your project needs them.
+export RUST_BACKTRACE := "1"
+export RUSTFLAGS := env_var_or_default("RUSTFLAGS", "")
+
+# Tool commands.
+CARGO := "cargo"
+NEXTEST := "cargo nextest"
+FEATURES := env_var_or_default("FEATURES", "")
+PACKAGE := env_var_or_default("PACKAGE", "")
+
+# Internal helper: emit `-p PACKAGE` and/or `--features FEATURES`
+# flags when those env vars are set, otherwise emit nothing. Used by
+# other recipes via $(just _cargo_args).
+_cargo_args:
+    #!/usr/bin/env bash
+    set -e
+    args=""
+    if [[ -n "{{PACKAGE}}" ]]; then args="$args -p {{PACKAGE}}"; fi
+    if [[ -n "{{FEATURES}}" ]]; then args="$args --features {{FEATURES}}"; fi
+    echo "$args"
+
+# ---- Setup -----------------------------------------------------------------
+
+# One-time setup: add rustfmt + clippy components and install the
+# auxiliary cargo tools used by other recipes (nextest, audit, deny,
+# machete). Safe to re-run.
+setup:
+    rustup component add rustfmt clippy
+    cargo install cargo-nextest --locked || true
+    cargo install cargo-audit --locked || true
+    cargo install cargo-deny --locked || true
+    cargo install cargo-machete --locked || true
+
+# Update the Rust toolchain and refresh Cargo.lock to latest
+# compatible dependency versions.
+update:
+    rustup update
+    cargo update
+
+# Remove cargo build artifacts and list any stray .DS_Store files.
+clean:
+    cargo clean
+    find . -type f -name '.DS_Store'
+
+# Deeper clean: remove the entire target/ directory and any
+# Cargo.lock backup left behind by `cargo update`.
+distclean: clean
+    rm -rf target
+    rm -f Cargo.lock.orig
+
+# ---- Build ------------------------------------------------------------------
+
+# Debug build, then install the binary into ./bin so contributors and
+# integration scripts can find it next to gomoku-http-client.
+build:
+    cargo build $(just _cargo_args)
+    mkdir -p bin
+    cp -v target/debug/gomoku-httpd-rust bin/gomoku-httpd-rust
+
+# Optimized release build, also copied into ./bin for the same reason.
+build-release:
+    cargo build --release $(just _cargo_args)
+    mkdir -p bin
+    cp -v target/release/gomoku-httpd-rust bin/gomoku-httpd-rust
+    ln -sf gomoku-httpd-rust bin/gomoku-httpd
+
+# Type-check all targets without producing binaries — much faster
+# than `build` when you just want to know if it compiles.
+check:
+    cargo check --all-targets $(just _cargo_args)
+
+# Type-check the entire workspace with every feature enabled.
+check-all:
+    cargo check --workspace --all-targets --all-features
+
+# ---- Run --------------------------------------------------------------------
+
+# Run the binary in debug mode, forwarding ARGS after `--`.
+run *ARGS:
+    cargo run $(just _cargo_args) -- {{ARGS}}
+
+# Run the binary in release mode, forwarding ARGS after `--`.
+run-release *ARGS:
+    cargo run --release $(just _cargo_args) -- {{ARGS}}
+
+# Default convenience target: build release, run on port 9931.
+start: build-release
+    ./bin/gomoku-httpd-rust -b 127.0.0.1:9931 -L INFO
+
+# Run the daemon and play one game using gomoku-http-client. Stops daemon on exit.
+demo PORT="9931" DEPTH="3" RADIUS="2" BOARD="15": build-release
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ./bin/gomoku-httpd-rust -b 127.0.0.1:{{PORT}} -L INFO &
+    SVR=$!
+    trap "kill $SVR 2>/dev/null || true" EXIT
+    sleep 1
+    ./bin/gomoku-http-client -h 127.0.0.1 -p {{PORT}} -d {{DEPTH}}:{{DEPTH}} -r {{RADIUS}} -b {{BOARD}}
+
+# Run the two-client integration test against a freshly built release binary.
+integration: build-release
+    ./tests/integration_two_clients.sh
+
+# Lower-effort integration smoke test that uses the debug binary.
+integration-debug: build
+    DAEMON_BIN=./bin/gomoku-httpd-rust ./tests/integration_two_clients.sh
+
+# ---- Test -------------------------------------------------------------------
+
+# Run the default test suite for the current package.
+test:
+    cargo test $(just _cargo_args)
+
+# Run every test in the workspace with all features enabled.
+test-all:
+    cargo test --workspace --all-targets --all-features
+
+# Run tests with stdout/stderr from the tests visible (no capture).
+test-nocapture:
+    cargo test $(just _cargo_args) -- --nocapture
+
+# Run a single test (or pattern) with output uncaptured.
+# Example: `just test-one my_module::my_test`.
+test-one NAME:
+    cargo test $(just _cargo_args) {{NAME}} -- --nocapture
+
+# Faster, parallel test runner (requires `cargo-nextest`).
+nextest:
+    cargo nextest run $(just _cargo_args)
+
+# nextest across the whole workspace with all features.
+nextest-all:
+    cargo nextest run --workspace --all-targets --all-features
+
+# Run the doc-tests embedded in /// comments.
+doc-test:
+    cargo test --doc $(just _cargo_args)
+
+# ---- Formatting -------------------------------------------------------------
+
+# Format the entire workspace in place using rustfmt.
+fmt:
+    cargo fmt --all
+
+# Verify formatting without modifying files. Fails (non-zero exit)
+# if anything would change — useful in CI.
+fmt-check:
+    cargo fmt --all -- --check
+
+# ---- Linting ----------------------------------------------------------------
+
+# Strict clippy across the whole workspace; warnings are errors.
+lint:
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+# Same as `lint` but scoped to PACKAGE/FEATURES.
+lint-package:
+    cargo clippy $(just _cargo_args) --all-targets -- -D warnings
+
+# Pedantic + nursery clippy lints, with a few noisy ones allowed.
+# Use this to surface stylistic improvements; not for CI by default.
+lint-pedantic:
+    cargo clippy --workspace --all-targets --all-features -- \
+      -D warnings \
+      -W clippy::pedantic \
+      -W clippy::nursery \
+      -A clippy::module-name-repetitions \
+      -A clippy::missing-errors-doc \
+      -A clippy::missing-panics-doc
+
+# ---- Fixing -----------------------------------------------------------------
+
+# Auto-apply compiler suggestions across the workspace, then format.
+# Allows dirty/staged trees so it works mid-edit.
+fix:
+    cargo fix --workspace --all-targets --all-features --allow-dirty --allow-staged
+    cargo fmt --all
+
+# Same as `fix` but scoped to PACKAGE/FEATURES.
+fix-package:
+    cargo fix $(just _cargo_args) --all-targets --allow-dirty --allow-staged
+    cargo fmt --all
+
+# Auto-apply clippy's machine-applicable suggestions, then format.
+clippy-fix:
+    cargo clippy --fix --workspace --all-targets --all-features --allow-dirty --allow-staged
+    cargo fmt --all
+
+# ---- Quality gates ----------------------------------------------------------
+
+# Full CI-equivalent gate: formatting, linting, tests, docs, integration
+# test, security audit, and unused-dependency check.
+ci: fmt-check lint test-all doc integration security unused
+
+# Lightweight pre-commit gate: format, lint the package, run tests.
+precommit: fmt lint-package test
+
+# Like `ci` but starts from a clean target/ to catch caching issues.
+full: clean fmt-check lint test-all doc security unused
+
+# ---- Docs -------------------------------------------------------------------
+
+# Build rustdoc for the workspace (without dependencies).
+doc:
+    cargo doc --workspace --all-features --no-deps
+
+# Build docs and open them in the browser.
+doc-open:
+    cargo doc --workspace --all-features --no-deps --open
+
+# ---- Security / dependency hygiene -----------------------------------------
+
+# Check Cargo.lock against the RustSec advisory DB.
+audit:
+    cargo audit
+
+# Enforce dependency policy (licenses, bans, sources, advisories)
+# per deny.toml.
+deny:
+    cargo deny check
+
+# Run both `audit` and `deny` as a single security gate.
+security: audit deny
+
+# Find dependencies declared in Cargo.toml but never used.
+unused:
+    cargo machete
+
+# Print the full dependency tree.
+tree:
+    cargo tree
+
+# Show only dependencies pulled in at multiple versions — these
+# inflate build times and binary size.
+tree-duplicates:
+    cargo tree --duplicates
+
+# Report dependencies whose newer versions are available.
+outdated:
+    cargo install cargo-outdated --locked || true
+    cargo outdated --workspace
+
+# ---- Benchmarks -------------------------------------------------------------
+
+# Run benchmarks (requires nightly or `criterion`-style benches).
+bench:
+    cargo bench $(just _cargo_args)
+
+# ---- Coverage ---------------------------------------------------------------
+# Requires:
+#   cargo install cargo-llvm-cov --locked
+
+# Generate an HTML coverage report under target/llvm-cov/html/.
+coverage:
+    cargo llvm-cov --workspace --all-features --html
+
+# Generate the HTML report and open it in the browser.
+coverage-open: coverage
+    open target/llvm-cov/html/index.html
+
+# Print a coverage summary to the terminal.
+coverage-text:
+    cargo llvm-cov --workspace --all-features
+
+# ---- Release helpers --------------------------------------------------------
+
+# Dry-run `cargo publish` to validate a crate before releasing.
+release-check:
+    cargo publish --dry-run $(just _cargo_args)
+
+# Publish the crate to crates.io. Make sure you've bumped the
+# version and tagged the release first.
+publish:
+    cargo publish $(just _cargo_args)
+
+# ---- Workspace helpers ------------------------------------------------------
+
+# Dump the full cargo metadata as pretty JSON (requires `jq`).
+metadata:
+    cargo metadata --format-version=1 | jq .
+
+# List the package IDs of every crate in this workspace.
+workspace-members:
+    cargo metadata --format-version=1 --no-deps \
+      | jq -r '.workspace_members[]'
+
+# ---- Dev conveniences -------------------------------------------------------
+
+# File-watcher loop: re-run `check` then `test` on every change.
+watch:
+    cargo watch -x "check --all-targets" -x test
+
+# File-watcher loop: re-run `test` on every change.
+watch-test:
+    cargo watch -x test
+
+# File-watcher loop: re-run the binary with ARGS on every change.
+watch-run *ARGS:
+    cargo watch -x "run -- {{ARGS}}"
+
+# ---- Diagnostics ------------------------------------------------------------
+
+# Print versions of the Rust toolchain and the main cargo plugins.
+# Handy for bug reports and CI logs.
+versions:
+    rustc --version
+    cargo --version
+    rustup --version
+    cargo clippy --version
+    cargo fmt --version
+
+# Print the env vars this justfile cares about.
+env:
+    @echo "PACKAGE={{PACKAGE}}"
+    @echo "FEATURES={{FEATURES}}"
+    @echo "RUSTFLAGS=$RUSTFLAGS"

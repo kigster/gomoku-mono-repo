@@ -1,0 +1,28 @@
+[package]
+name = "gomoku-httpd-rust"
+version = "1.0.1"
+edition = "2024"
+description = "Gomoku AI HTTP Server - Rust port of gomoku-httpd"
+authors = ["Konstantin Gredeskoul"]
+license = "MIT"
+
+[[bin]]
+name = "gomoku-httpd-rust"
+path = "src/main.rs"
+
+[dependencies]
+actix-web = "4"
+actix-cors = "0.7"
+serde_json = "1"
+clap = { version = "4", features = ["derive", "wrap_help"] }
+log = "0.4"
+env_logger = "0.11"
+chrono = "0.4"
+tokio = { version = "1", features = ["full"] }
+rand = "0.9"
+nu-ansi-term = "0.50"
+rayon = "1"
+
+[profile.release]
+opt-level = 3
+lto = true

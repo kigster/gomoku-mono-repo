@@ -1,0 +1,5 @@
+**/*.DS_Store
+/target
+/bin/gomoku-httpd-rust
+PR.md
+/bin/*

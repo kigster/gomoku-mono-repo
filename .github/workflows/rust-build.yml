@@ -1,0 +1,99 @@
+name: Rust Build Lint and Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+defaults:
+  run:
+    working-directory: ./gomoku-httpd-rust
+
+jobs:
+  build:
+    name: cargo build --release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo build --release
+        run: cargo build --release
+      - name: Smoke test --version
+        run: ./target/release/gomoku-httpd-rust --version
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: gomoku-httpd-rust-linux-x86_64
+          path: target/release/gomoku-httpd-rust
+          if-no-files-found: error
+          retention-days: 14
+
+  clippy:
+    name: cargo clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  doc:
+    name: cargo doc
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo doc
+        run: cargo doc --no-deps --document-private-items --quiet
+
+  format:
+    name: cargo fmt --check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: cargo fmt --all -- --check
+        run: cargo fmt --all -- --check
+
+  test:
+    name: cargo test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo build (release)
+        run: cargo build --release --verbose
+      - name: cargo test (release)
+        run: cargo test --release --all-features --verbose
+
+  whitespace:
+    name: git diff --check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for whitespace errors and conflict markers
+        run: git --no-pager diff --check HEAD~1..HEAD -- || git --no-pager diff --check
