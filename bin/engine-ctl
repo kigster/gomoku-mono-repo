@@ -1,12 +1,24 @@
 #!/usr/bin/env bash
 # vim: ft=bash
 
-GOMOKUD_BINARY="gomoku-httpd"
-GOMOKUD_EXECUTABLE="gomoku-httpd"
+# GOMOKUD_BINARY/GOMOKUD_EXECUTABLE/GOMOKUD_BINARY_REGEX can be set in the
+# environment (e.g. by bin/gctl) to point at a different daemon — the Rust
+# port is invoked as GOMOKUD_BINARY=gomoku-httpd-rust. Defaults preserve the
+# original C engine behavior.
+: "${GOMOKUD_BINARY:=gomoku-httpd}"
+: "${GOMOKUD_EXECUTABLE:=${GOMOKUD_BINARY}}"
 
 command -V "${GOMOKUD_EXECUTABLE}" >/dev/null 2>&1 || export GOMOKUD_EXECUTABLE="./${GOMOKUD_BINARY}"
 
-GOMOKUD_BINARY_REGEX="[g]omoku-httpd"
+# Default regex isolates each binary: the C binary is matched with a
+# trailing non-dash so "gomoku-httpd-rust" never collides with it. Callers
+# managing the Rust binary set GOMOKUD_BINARY_REGEX to "[g]omoku-httpd-rust".
+if [[ "${GOMOKUD_BINARY}" == "gomoku-httpd-rust" ]]; then
+  : "${GOMOKUD_BINARY_REGEX:=[g]omoku-httpd-rust}"
+else
+  : "${GOMOKUD_BINARY_REGEX:=[g]omoku-httpd($|[^-])}"
+fi
+export GOMOKUD_BINARY GOMOKUD_EXECUTABLE GOMOKUD_BINARY_REGEX
 
 DEFAULT_HOST="0.0.0.0"
 DEFAULT_PORT=9500
@@ -26,9 +38,9 @@ function daemons-count() {
 function daemons-show() {
   if [[ -z "$1" ]]; then
     echo "All ${GOMOKUD_BINARY} processes:"
-    ps -ef | grep "${GOMOKUD_BINARY_REGEX}" | grep -v grep
+    ps -ef | grep -E "${GOMOKUD_BINARY_REGEX}" | grep -v grep
   else
-    ps -ef "$1" r | grep "${GOMOKUD_BINARY_REGEX}" | grep -v grep | grep -v "grep" | $1
+    ps -ef "$1" r | grep -E "${GOMOKUD_BINARY_REGEX}" | grep -v grep | grep -v "grep" | $1
   fi
 }
 
@@ -113,9 +125,26 @@ function daemons-start() {
 
   ${flag_verbose} && echo -e "${txtylw}Starting ${nproc} ${GOMOKUD_BINARY} processes...${clr}"
 
-  [[ -f ${GOMOKUD_BINARY} ]] || { make -C gomoku-c install; }
+  # Auto-build the missing binary only for the C engine. The Rust port has
+  # to be built deliberately via `just build-rust` from the monorepo root.
+  if [[ ! -x ${GOMOKUD_EXECUTABLE} && ! -x ${GOMOKUD_BINARY} ]]; then
+    case "${GOMOKUD_BINARY}" in
+    gomoku-httpd) make -C gomoku-c install ;;
+    *)
+      echo "ERROR: ${GOMOKUD_BINARY} not found. Run 'just build-rust' from the monorepo root." >&2
+      return 1
+      ;;
+    esac
+  fi
 
   mkdir -p log
+
+  # GOMOKUD_BACKGROUND=1 (set by gctl when the rust engine is selected)
+  # background-launches each worker. The C binary daemonizes itself via
+  # -d (forks); the rust binary's -d is a no-op, so we have to background
+  # it from the shell or this loop would block on the first iteration.
+  # Defaults to 0 to preserve C-engine behavior.
+  local background="${GOMOKUD_BACKGROUND:-0}"
 
   for ((i = 0; i < nproc; i++)); do
     port=$((DEFAULT_PORT + i))
@@ -123,7 +152,14 @@ function daemons-start() {
     cmd="${GOMOKUD_EXECUTABLE} -b ${DEFAULT_HOST}:${port} -a ${haproxy_port} -d ${DEFAULT_FLAGS}"
 
     ${flag_verbose} && echo -e -n "${txtgrn}booting: [${cmd}] ... ${clr}"
-    eval "${cmd}" &>/dev/null
+    if [[ "${background}" == "1" ]]; then
+      # Detach via nohup + & + disown so the worker survives this script
+      # exiting and we never block on its lifetime.
+      nohup bash -c "${cmd}" </dev/null &>/dev/null &
+      disown
+    else
+      eval "${cmd}" &>/dev/null
+    fi
     ${flag_verbose} && echo -e "with PID ${txtpur}$!${clr}, exit code $?"
   done
 
@@ -138,7 +174,9 @@ function daemons-stop() {
 
   if [[ ${count} -gt 0 ]]; then
     ${flag_verbose} && echo -e "${txtylw}Found ${count} processes running, stopping them...${clr}"
-    pkill -9 ${GOMOKUD_BINARY}
+    # -x: exact-name match, so killing "gomoku-httpd" doesn't also kill
+    # "gomoku-httpd-rust" (and vice versa).
+    pkill -9 -x "${GOMOKUD_BINARY}"
   else
     ${flag_verbose} && echo -e "${txtgrn}No ${GOMOKUD_BINARY} processes found, nothing to stop.${clr}"
   fi

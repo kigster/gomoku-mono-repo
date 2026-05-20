@@ -15,6 +15,13 @@ tag     := "v" + version
 recipes:
     @just --choose
 
+
+# Installs Brew packages from Brewfile and other necessities
+setup:
+    #!/usr/bin/env bash
+    # Run `brew bundle` separately to upgrade the packages to latest versions
+    [[ -f Brewfile ]] && brew bundle --no-upgrade
+
 # ─── Build ────────────────────────────────────────────────────────────────────
 
 # generates a JWT token and appends it to .env
@@ -25,17 +32,30 @@ generate-jwt:
 build-game:
     make -C gomoku-c all install
 
-# Build everything: C engine + frontend + copy assets to api/public
-build: install-frontend
+# Build the Rust gomoku-httpd-rust (release) and copy it into ./bin/
+build-rust:
+    cd gomoku-httpd-rust && just build-release
+    @mkdir -p bin
+    cp -fv gomoku-httpd-rust/target/release/gomoku-httpd-rust bin/gomoku-httpd-rust
+
+# Build everything: C engine + Rust httpd + frontend + copy assets to api/public
+build: install-frontend build-rust
     make -C gomoku-c all install
+
+# Alias: `just make` is the same as `just build`
+alias make := build
+
+# Build everything and install all binaries under ./bin
+install: build
 
 # Clean and rebuild the game binary
 rebuild:
     make -C gomoku-c rebuild
 
-# Clean all build artifacts
+# Clean all build artifacts, including Rust target/
 clean:
     make -C gomoku-c clean
+    cd gomoku-httpd-rust && cargo clean
     find . -maxdepth 1 -type f -name 'gomoku*' -delete
 
 # Build frontend static assets into frontend/dist
@@ -54,16 +74,20 @@ clean-start: clean build
 
 # ─── Test ─────────────────────────────────────────────────────────────────────
 
-# Run C engine unit tests (game + daemon)
-test: test-daemon test-api test-frontend
+# Run every component's unit tests: C engine, daemon, Rust port, API, frontend.
+test: test-daemon test-rust test-api test-frontend
     ENVIRONMENT=test make -C gomoku-c test
 
-test-gomoku-c: 
-    ENVIRONMENT=test make -C gmoku-c test
+test-gomoku-c:
+    ENVIRONMENT=test make -C gomoku-c test
 
 # Run daemon unit tests only
 test-daemon:
     ENVIRONMENT=test make -C gomoku-c test-daemon
+
+# Run the Rust httpd test suite (unit + doc tests).
+test-rust:
+    cd gomoku-httpd-rust && just test
 
 # Run API tests in parallel across 4 workers (each gets its own gomoku_test_gwN DB)
 test-api:
@@ -92,11 +116,19 @@ validate-games:
     @cd schema-validator && bundle check || bundle install >/dev/null
     @cd schema-validator && bundle exec bin/schema-validator validate-json ../gomoku-c/games
 
-# Run all tests across the monorepo
-test-all: test test-api test-frontend
+# Run all tests across the monorepo (C, Rust, API, frontend).
+test-all: test test-rust test-api test-frontend
 
-# Run all pre-commit tests and linters
-ci:
+# Lint/format the Rust httpd in CI mode (fmt-check + clippy -D warnings).
+lint-rust:
+    cd gomoku-httpd-rust && just fmt-check && just lint
+
+# Run the Rust integration smoke test (spawns the daemon + two clients).
+integration-rust:
+    cd gomoku-httpd-rust && just integration
+
+# Full CI gate: build everything, run all tests, then pre-commit hooks
+ci: build test-all lint-rust
     @lefthook run --all-files pre-commit
 
 # ─── Version & Release ────────────────────────────────────────────────────────
