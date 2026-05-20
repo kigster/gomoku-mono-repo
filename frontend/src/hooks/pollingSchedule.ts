@@ -1,6 +1,6 @@
 // Tiered polling cadence for multiplayer GET /multiplayer/{code}.
 // Driven by wall-clock elapsed time since polling started, NOT by the
-// server-replied 304/200 stream. The schedule trades responsiveness early
+// server's update/no-change reply stream. The schedule trades responsiveness early
 // (300 ms while both players are likely actively engaged) for cheapness
 // later (5 s after an hour, when the game is probably idle).
 //

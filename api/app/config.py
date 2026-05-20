@@ -69,7 +69,8 @@ class Settings(BaseSettings):
 
     # Email
     email_provider: str = "stdout"  # stdout | sendgrid
-    email_from: str = "noreply@gomoku.games"
+    email_from: str = "gomoku@email.gomoku.games"
+    email_from_name: str = "Gomoku Support"
     sendgrid_api_key: str = ""
 
     # LogFire

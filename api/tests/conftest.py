@@ -20,6 +20,14 @@ from httpx import ASGITransport, AsyncClient
 _api_dir = Path(__file__).resolve().parent.parent
 os.environ["ENVIRONMENT"] = "ci" if os.environ.get("CI") else "test"
 
+# Email isolation — the repo-root .env (consumed by .envrc's `dotenv`)
+# can set EMAIL_PROVIDER=sendgrid + SENDGRID_API_KEY for local password-
+# reset testing. Pydantic reads process env, so without this scrub the
+# tests would actually POST to SendGrid (and fail with 401 against a
+# revoked dev key). Force stdout mode regardless of shell state.
+os.environ["EMAIL_PROVIDER"] = "stdout"
+os.environ.pop("SENDGRID_API_KEY", None)
+
 from app.config import settings  # noqa: E402
 from app.database import create_pool  # noqa: E402
 from app.main import app, fastapi_app  # noqa: E402
