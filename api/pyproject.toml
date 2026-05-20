@@ -1,7 +1,7 @@
 [project]
 name = "gomoku-api"
 version = "0.1.0"
-description = "FastAPI service for Gomoku: auth, game proxy, scoring, leaderboard"
+description = "FastAPI API & Web Service for Gomoku, supporting auth, chat, game proxy, scoring, leaderboard"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
@@ -64,6 +64,11 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# email.py contains an inline HTML email template; wrapping the HTML
+# at 100 cols would hurt readability without any rendering benefit.
+"app/services/email.py" = ["E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

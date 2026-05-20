@@ -9,7 +9,14 @@ from app.database import get_pool
 from app.elo import ai_tier_rating, k_factor
 from app.elo import update as elo_update
 from app.logger import get_logger
-from app.models.game import GameHistoryEntry, GameHistoryResponse, GameSaveRequest, GameSaveResponse
+from app.models.game import (
+    GameHistoryEntry,
+    GameHistoryResponse,
+    GameSaveRequest,
+    GameSaveResponse,
+    GameStartRequest,
+    GameStartResponse,
+)
 from app.scoring import game_score, rating
 from app.security import get_current_user
 
@@ -69,21 +76,80 @@ async def play(request: Request):
     return resp.json()
 
 
-@router.post("/start")
+@router.post("/start", response_model=GameStartResponse)
 async def start(
     request: Request,
     user: dict = Depends(get_current_user),
     pool=Depends(get_pool),
-):
-    """Record that a user started a game."""
+    body: GameStartRequest | None = None,
+) -> GameStartResponse:
+    """
+    Body is optional so legacy clients (no body) still work; missing
+    fields fall back to the defaults defined on GameStartRequest.
+
+    Insert a games row in `in_progress` state and return its id.
+
+    The frontend stores `game_id` in the local game JSON and sends it
+    back on `/game/save`, which allows the backend to UPDATEs the game
+    row instead of inserting a new one. That means one AI session =
+    one `games` row, visible from the moment it starts (so
+    `online_users` can derive an "ai-battle" state from
+    `games.status = 'in_progress'`).
+
+    NOTE: Any prior `in_progress` AI rows for this user are flipped to
+    `abandoned` first — a user who never finished a previous game (tab
+    close, crash) gets the unfinished row tidied automatically when
+    they start a new one. The leftover stale rows that nobody ever
+    follows up on are handled by a future cleanup pass.
+    """
+    if body is None:
+        body = GameStartRequest()
     start_time = time.monotonic()
-    body = await request.body()
-    await pool.execute(
-        "UPDATE users SET games_started = games_started + 1 WHERE id = $1::uuid",
-        str(user["id"]),
-    )
-    log_game_request(request, start_time, status.HTTP_200_OK, len(body))
-    return {"status": "ok"}
+    user_id = str(user["id"])
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            await conn.execute(
+                "UPDATE users SET games_started = games_started + 1 WHERE id = $1::uuid",
+                user_id,
+            )
+            # Abandon any prior in-flight AI games for this user before
+            # we start a new one. Keeps `online_users.state` unambiguous
+            # (one current game per player) and prevents the partial
+            # `games_in_progress_idx` from growing unbounded with stale
+            # rows. The CHECK on status='completed'→invariants doesn't
+            # trip because we're not transitioning to 'completed'.
+            await conn.execute(
+                """
+                UPDATE games
+                SET    status = 'abandoned'
+                WHERE  user_id = $1::uuid
+                  AND  game_type = 'ai'
+                  AND  status = 'in_progress'
+                """,
+                user_id,
+            )
+            row = await conn.fetchrow(
+                """
+                INSERT INTO games (
+                    username, user_id, game_type, status,
+                    board_size, depth, radius, total_moves,
+                    human_player, human_time_s, ai_time_s, score, game_json
+                ) VALUES (
+                    $1, $2::uuid, 'ai', 'in_progress',
+                    $3, $4, $5, 0,
+                    $6, 0, 0, 0, '{}'::jsonb
+                )
+                RETURNING id
+                """,
+                user["username"],
+                user_id,
+                body.board_size,
+                body.depth,
+                body.radius,
+                body.human_player,
+            )
+    log_game_request(request, start_time, status.HTTP_200_OK, 0)
+    return GameStartResponse(game_id=str(row["id"]))
 
 
 @router.post("/save", response_model=GameSaveResponse)
@@ -153,32 +219,78 @@ async def save(
             elo_after = elo_update(elo_before, opponent_rating, score_a, k)
             peak_after = max(peak_before, elo_after)
 
-            row = await conn.fetchrow(
-                """INSERT INTO games
-                   (username, user_id, winner, human_player, board_size, depth, radius,
-                    total_moves, human_time_s, ai_time_s, score, game_json, client_ip,
-                    elo_before, elo_after, opponent_elo_before)
-                   VALUES ($1, $2::uuid, $3, $4, $5, $6, $7,
-                           $8, $9, $10, $11, $12::jsonb, $13::inet,
-                           $14, $15, $16)
-                   RETURNING id""",
-                user["username"],
-                user_id,
-                winner,
-                human_player,
-                gj.get("board_size", 19),
-                ai_depth,
-                radius,
-                len(moves),
-                human_time_s,
-                ai_time_s,
-                score,
-                json_mod.dumps(gj),
-                client_ip,
-                elo_before,
-                elo_after,
-                opponent_rating,
-            )
+            # Prefer UPDATE-by-id when the client sends a `game_id`
+            # captured from `/game/start` — that path keeps a single row
+            # per AI session (no duplicate rows for the same game).
+            # The UPDATE is scoped to `user_id` so a misbehaving client
+            # can't overwrite somebody else's game. Falls back to
+            # INSERT when no game_id is provided (legacy clients).
+            row = None
+            if body.game_id:
+                row = await conn.fetchrow(
+                    """UPDATE games
+                          SET status        = 'completed',
+                              winner        = $3,
+                              human_player  = $4,
+                              board_size    = $5,
+                              depth         = $6,
+                              radius        = $7,
+                              total_moves   = $8,
+                              human_time_s  = $9,
+                              ai_time_s     = $10,
+                              score         = $11,
+                              game_json     = $12::jsonb,
+                              client_ip     = $13::inet,
+                              elo_before    = $14,
+                              elo_after     = $15,
+                              opponent_elo_before = $16
+                        WHERE id = $1::uuid
+                          AND user_id = $2::uuid
+                        RETURNING id""",
+                    body.game_id,
+                    user_id,
+                    winner,
+                    human_player,
+                    gj.get("board_size", 19),
+                    ai_depth,
+                    radius,
+                    len(moves),
+                    human_time_s,
+                    ai_time_s,
+                    score,
+                    json_mod.dumps(gj),
+                    client_ip,
+                    elo_before,
+                    elo_after,
+                    opponent_rating,
+                )
+            if row is None:
+                row = await conn.fetchrow(
+                    """INSERT INTO games
+                       (username, user_id, winner, human_player, board_size, depth, radius,
+                        total_moves, human_time_s, ai_time_s, score, game_json, client_ip,
+                        elo_before, elo_after, opponent_elo_before, status)
+                       VALUES ($1, $2::uuid, $3, $4, $5, $6, $7,
+                               $8, $9, $10, $11, $12::jsonb, $13::inet,
+                               $14, $15, $16, 'completed')
+                       RETURNING id""",
+                    user["username"],
+                    user_id,
+                    winner,
+                    human_player,
+                    gj.get("board_size", 19),
+                    ai_depth,
+                    radius,
+                    len(moves),
+                    human_time_s,
+                    ai_time_s,
+                    score,
+                    json_mod.dumps(gj),
+                    client_ip,
+                    elo_before,
+                    elo_after,
+                    opponent_rating,
+                )
             await conn.execute(
                 """UPDATE users
                        SET games_finished = games_finished + 1,

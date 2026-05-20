@@ -30,6 +30,7 @@ timeout) ends a game.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -45,6 +46,12 @@ router = APIRouter(prefix="/social", tags=["social"])
 # minute is treated as present. Wider windows would surface ghost
 # users; narrower would miss real ones across a single network blip.
 WHO_PRESENCE_WINDOW_SECONDS = 60
+
+# /social/online's window for the chat-panel /who command. 15 minutes
+# is wide enough that someone who tabbed away mid-conversation still
+# shows up, but tight enough that yesterday's logins don't pollute
+# the "currently online" list.
+ONLINE_PRESENCE_WINDOW_MINUTES = 15
 
 
 class TargetUsernameRequest(BaseModel):
@@ -84,6 +91,28 @@ class WhoResponse(BaseModel):
     users: list[WhoEntry]
 
 
+class OnlineUserEntry(BaseModel):
+    """One row in /social/online. `state` is derived in the `online_users`
+    view (see migration 0014). `active_game_id` is the FK target relevant
+    to the current state — multiplayer_games.id for human-battle, games.id
+    for ai-battle, NULL otherwise. `opponent_username` is populated only
+    when `state == 'human-battle'` — the other participant in the active
+    multiplayer game — so the chat panel can render
+    "playing @<opponent>" without a second round-trip."""
+
+    user_id: str
+    username: str
+    state: Literal["human-battle", "ai-battle", "chatting", "idle"]
+    active_game_id: str | None
+    opponent_username: str | None = None
+    last_seen_at: datetime
+
+
+class OnlineUsersResponse(BaseModel):
+    users: list[OnlineUserEntry]
+    total: int
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -105,13 +134,19 @@ async def _resolve_target(conn: asyncpg.Connection, username: str, *, caller_id:
 
 
 async def _terminate_active_game_between(
-    conn: asyncpg.Connection, user_a: str, user_b: str
+    conn: asyncpg.Connection, blocker_id: str, blockee_id: str
 ) -> bool:
-    """If there's a `waiting` or `in_progress` multiplayer game between A
-    and B, mark it terminated and return True. Otherwise return False.
+    """If there's a `waiting` or `in_progress` multiplayer game between
+    `blocker_id` and `blockee_id`, mark it terminated and return True.
+    Otherwise return False.
 
     Waiting → cancelled (the game never started, no result to record).
-    In-progress → abandoned (preserves the partial moves but ends the game).
+    In-progress → abandoned (preserves the partial moves but ends the
+    game). For the in_progress branch we also stamp
+    `abandoned_by_user_id` = blocker and `abandoned_at` = now() so the
+    UI can tell who left without leaking the fact that a block occurred
+    (the blocker is implicit context that the receiving frontend doesn't
+    surface — it just shows "your opponent has left").
     """
     row = await conn.fetchrow(
         """
@@ -122,7 +157,15 @@ async def _terminate_active_game_between(
                             END,
                version    = version + 1,
                updated_at = NOW(),
-               finished_at = NOW()
+               finished_at = NOW(),
+               abandoned_by_user_id = CASE state
+                              WHEN 'in_progress' THEN $1::uuid
+                              ELSE NULL
+                            END,
+               abandoned_at = CASE state
+                              WHEN 'in_progress' THEN NOW()
+                              ELSE NULL
+                            END
         WHERE  state IN ('waiting', 'in_progress')
           AND  (
                   (host_user_id = $1::uuid AND guest_user_id = $2::uuid)
@@ -130,8 +173,8 @@ async def _terminate_active_game_between(
               )
         RETURNING id
         """,
-        user_a,
-        user_b,
+        blocker_id,
+        blockee_id,
     )
     return row is not None
 
@@ -289,4 +332,84 @@ async def who(
             )
             for r in rows
         ]
+    )
+
+
+@router.get("/online", response_model=OnlineUsersResponse)
+async def online(
+    limit: int = Query(default=10, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    user: dict = Depends(get_current_user),  # noqa: ARG001 — auth-only
+    pool=Depends(get_pool),
+) -> OnlineUsersResponse:
+    """List users currently considered "online" (see migration 0014's
+    `online_users` view docstring) with their state and any active
+    game id, paginated. The chat panel's `/who` slash command renders
+    a page at a time — default page size 10.
+
+    Tightens the view's 8h presence window down to
+    `ONLINE_PRESENCE_WINDOW_MINUTES` for the chat-panel UX — yesterday's
+    logins shouldn't pollute the "currently online" list even though
+    the view itself keeps them so other consumers can decide their own
+    cutoff.
+
+    Excludes nobody — including the caller — so a user can spot
+    themselves in the list and tell at a glance which state the view
+    derived for them. The page is sorted by `last_seen_at DESC` (most-
+    recently-active first) by the view itself.
+
+    For rows in `human-battle`, joins `multiplayer_games` + `users` to
+    resolve the other participant's username as `opponent_username`,
+    so the client can render "playing @<opponent>" without a second
+    round-trip per row.
+    """
+    rows = await pool.fetch(
+        f"""
+        SELECT
+            ou.user_id,
+            ou.username,
+            ou.state,
+            ou.active_game_id,
+            ou.last_seen_at,
+            opp.username AS opponent_username
+        FROM   online_users ou
+        LEFT JOIN LATERAL (
+            SELECT u.username
+            FROM   multiplayer_games mg
+            JOIN   users u
+              ON   u.id = CASE
+                            WHEN mg.host_user_id = ou.user_id
+                                THEN mg.guest_user_id
+                            ELSE mg.host_user_id
+                          END
+            WHERE  mg.id = ou.active_game_id
+            LIMIT  1
+        ) opp ON ou.state = 'human-battle'
+        WHERE  ou.last_seen_at > NOW()
+               - INTERVAL '{ONLINE_PRESENCE_WINDOW_MINUTES} minutes'
+        LIMIT $1 OFFSET $2
+        """,
+        limit,
+        offset,
+    )
+    total = await pool.fetchval(
+        f"""
+        SELECT COUNT(*) FROM online_users
+        WHERE last_seen_at > NOW()
+              - INTERVAL '{ONLINE_PRESENCE_WINDOW_MINUTES} minutes'
+        """
+    )
+    return OnlineUsersResponse(
+        users=[
+            OnlineUserEntry(
+                user_id=str(r["user_id"]),
+                username=r["username"],
+                state=r["state"],
+                active_game_id=str(r["active_game_id"]) if r["active_game_id"] else None,
+                opponent_username=r["opponent_username"],
+                last_seen_at=r["last_seen_at"],
+            )
+            for r in rows
+        ],
+        total=int(total or 0),
     )

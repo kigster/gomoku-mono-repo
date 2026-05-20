@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Board from './Board'
 import ChatPanel from './ChatPanel'
+import SettingsPanel from './SettingsPanel'
+import SidePanelTabs, { type SidePanelTab } from './SidePanelTabs'
 import WaitingForOpponent from './WaitingForOpponent'
+import { DEFAULT_SETTINGS } from '../constants'
 import {
   joinGame,
   isParticipantView,
@@ -18,6 +21,9 @@ interface MultiplayerGamePageProps {
   token: string
   code: string
   username: string
+  /** Fires when the polling loop sees a 401. App.tsx clears the token and
+   *  surfaces the sign-in modal; without it we'd loop on auth failure. */
+  onSessionExpired?: () => void
 }
 
 /**
@@ -56,11 +62,17 @@ export default function MultiplayerGamePage({
   token,
   code,
   username,
+  onSessionExpired,
 }: MultiplayerGamePageProps) {
   const { game, loading, error, expired, sendMove, sendResign, refresh } =
-    useMultiplayerPolling(token, code)
+    useMultiplayerPolling(token, code, onSessionExpired)
   const [joining, setJoining] = useState(false)
   const [joinError, setJoinError] = useState<string | null>(null)
+  // Right-rail tab — defaults to 'multi' so the chat panel is in front
+  // of the user the moment they land on the multiplayer page. They can
+  // flip to 'solo' to inspect the (read-only) AI settings if they want
+  // to compare, but the chat is the relevant surface here.
+  const [sideTab, setSideTab] = useState<SidePanelTab>('multi')
   // Guest's chosen color for `color_chosen_by='guest'` games. Set via the
   // pick-color screen before the auto-join fires.
   const [guestPickedColor, setGuestPickedColor] = useState<Color | null>(null)
@@ -162,7 +174,15 @@ export default function MultiplayerGamePage({
   }
 
   if (!game) {
-    return <ErrorPage message={error ?? 'Could not load game.'} />
+    // Translate the bare server detail into something a human can read.
+    // `multiplayer_game_not_found` in particular fires when the URL points
+    // at a code that no longer exists (e.g. dev DB was reset under a stale
+    // bookmark) — without this mapping the user just sees the raw token.
+    const friendly =
+      error === 'multiplayer_game_not_found'
+        ? 'This invitation link is not valid (or the game has been deleted).'
+        : error ?? 'Could not load game.'
+    return <ErrorPage message={friendly} />
   }
 
   // Cancelled/abandoned games — read-only result panel. We split the
@@ -247,34 +267,83 @@ export default function MultiplayerGamePage({
         ? game.host.username
         : null
 
-  // Game-in-progress view uses a two-column layout: chat panel on the left,
-  // board + controls on the right. Anything that pre-dates a started game
-  // (waiting, color-pick, etc.) keeps the previous centred layout.
+  // Game-in-progress view reuses the SAME outer frame as the home page
+  // (`game-panel` background + SidePanelTabs sidebar on the left + board
+  // in the centre). The only differences from the home layout are:
+  //   - left sidebar defaults to the Multi tab so the chat is in front;
+  //   - the Solo tab shows a read-only SettingsPanel (multiplayer ignores
+  //     local AI settings);
+  //   - the centre column renders the multiplayer Board + PlayerHeader +
+  //     resign control instead of the AI Board + GameStatus + Start/Abort.
   const showInGameLayout = game.state === 'in_progress' || game.state === 'finished'
 
   if (showInGameLayout) {
     return (
-      <div className='min-h-screen px-4 py-6 text-neutral-100'>
-        <div className='max-w-6xl mx-auto'>
-          <h1 className='font-heading text-3xl font-bold text-amber-400 text-center mb-6'>
+      <div className='flex justify-center px-2 sm:px-4 pb-4 sm:py-8 pt-4'>
+        <div className='game-panel rounded-2xl p-4 sm:p-8 max-w-5xl w-full text-neutral-100'>
+          <h1 className='font-heading text-2xl sm:text-3xl font-bold text-amber-400 text-center mb-4 sm:mb-6'>
             Gomoku — {titleLabel}
           </h1>
-          <div className='grid grid-cols-1 lg:grid-cols-[20rem_minmax(0,1fr)] gap-6 items-start'>
-            {/* Left column: chat panel (light variant, fills column height) */}
-            <div className='h-[34rem] lg:h-[38rem]'>
-              <ChatPanel
-                meUsername={username}
-                peerUsername={opponentUsername}
-                authToken={token}
-                apiBase={API_BASE}
-                variant='light'
-                height='fill'
-              />
+          {/* `items-stretch` on lg makes both columns share the height of the
+              tallest one (the board column). The left column then flex-grows
+              the chat tab to fill, leaving the Resign button pinned to the
+              bottom — which lines up visually with the bottom of the board. */}
+          <div className='flex flex-col lg:flex-row gap-4 sm:gap-8 items-center lg:items-stretch justify-center'>
+            {/* Left panel: Settings/Chat tabs (same as home page) */}
+            <div className='w-full lg:w-72 shrink-0 flex flex-col'>
+              <div className='lg:flex-1 lg:min-h-0 flex flex-col'>
+                <SidePanelTabs
+                  active={sideTab}
+                  onChange={setSideTab}
+                  height='fill'
+                  solo={
+                    <SettingsPanel
+                      settings={DEFAULT_SETTINGS}
+                      onChange={() => {}}
+                      disabled={true}
+                    />
+                  }
+                  multi={
+                    <ChatPanel
+                      meUsername={username}
+                      peerUsername={opponentUsername}
+                      authToken={token}
+                      apiBase={API_BASE}
+                      gameCode={code}
+                      variant='light'
+                      height='fill'
+                    />
+                  }
+                />
+              </div>
+
+              {isParticipantView(game) && game.state === 'in_progress' && (
+                <div className='hidden lg:block mt-5'>
+                  <button
+                    onClick={() => {
+                      if (window.confirm('Resign this game?')) void sendResign()
+                    }}
+                    className='w-full py-3 rounded-xl text-lg font-semibold font-heading
+                               bg-red-700 hover:bg-red-600 active:bg-red-800
+                               text-white shadow-md shadow-red-900/40
+                               transition-all duration-200 hover:scale-[1.01]'
+                  >
+                    Resign
+                  </button>
+                </div>
+              )}
             </div>
 
-            {/* Right column: board + controls */}
-            <div className='flex flex-col items-center gap-4'>
+            {/* Centre: board. Status ("Your move…") sits ABOVE the board so the
+                column's bottom edge coincides with the board's — that is what
+                makes the left-column Resign button align with the board bottom. */}
+            <div className='flex flex-col items-center w-full lg:w-auto gap-4'>
               <PlayerHeader game={game as MultiplayerGameView} />
+              {isParticipantView(game) && game.state === 'in_progress' && (
+                <p className='text-neutral-300 -mt-2'>
+                  {game.your_turn ? 'Your move.' : 'Waiting for opponent…'}
+                </p>
+              )}
               {board && (
                 <Board
                   board={board}
@@ -285,20 +354,16 @@ export default function MultiplayerGamePage({
                   onCellClick={handleCellClick}
                 />
               )}
+              {/* Mobile-only resign button — desktop has it in the left rail. */}
               {isParticipantView(game) && game.state === 'in_progress' && (
-                <div className='flex flex-col items-center gap-2 mt-2'>
-                  <p className='text-neutral-300'>
-                    {game.your_turn ? 'Your move.' : 'Waiting for opponent…'}
-                  </p>
-                  <button
-                    onClick={() => {
-                      if (window.confirm('Resign this game?')) void sendResign()
-                    }}
-                    className='px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600 text-white font-semibold'
-                  >
-                    Resign
-                  </button>
-                </div>
+                <button
+                  onClick={() => {
+                    if (window.confirm('Resign this game?')) void sendResign()
+                  }}
+                  className='lg:hidden px-4 py-2 rounded-lg bg-red-700 hover:bg-red-600 text-white font-semibold'
+                >
+                  Resign
+                </button>
               )}
               {game.state === 'finished' && isParticipantView(game) && (
                 <GameOverPanel game={game} username={username} />

@@ -60,8 +60,6 @@ class ResignRequest(BaseModel):
 class CancelRequest(BaseModel):
     """Body of POST /multiplayer/{code}/cancel — empty placeholder."""
 
-    pass
-
 
 # --- Response shapes --------------------------------------------------------
 

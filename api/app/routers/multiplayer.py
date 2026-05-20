@@ -22,12 +22,20 @@ from __future__ import annotations
 import json as json_mod
 from typing import Any, Literal, cast
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import JSONResponse
 
 from app.database import get_pool
 from app.elo import k_factor
 from app.elo import update as elo_update
+from app.models.db_tables import (
+    ColorChosenBy,
+    MultiplayerCreatedVia,
+    MultiplayerGameRow,
+    MultiplayerGameState,
+    MultiplayerGameWithUsersRow,
+    StoneColor,
+)
 from app.models.multiplayer import (
     CancelRequest,
     JoinRequest,
@@ -39,6 +47,25 @@ from app.models.multiplayer import (
     ResignRequest,
 )
 from app.multiplayer import allocate_game, game_invite_url
+from app.multiplayer import db as mp_db
+from app.multiplayer.exceptions import (
+    CannotCancelInState,
+    CannotJoinOwnGame,
+    ChosenColorNotAllowed,
+    ChosenColorRequired,
+    FailedToAllocateCode,
+    GameAlreadyFull,
+    GameCancelled,
+    GameNotInProgress,
+    GameNotInWaitingState,
+    MultiplayerGameNotFound,
+    NotAParticipant,
+    NotTheHost,
+    NotYourTurn,
+    OutOfBounds,
+    SquareOccupied,
+    VersionConflict,
+)
 from app.multiplayer.win_detector import has_winner
 from app.security import get_current_user
 
@@ -63,101 +90,92 @@ def _coerce_moves(raw: Any) -> list[tuple[int, int]]:
     return [(int(m[0]), int(m[1])) for m in raw]
 
 
-def _opposite_color(color: str) -> str:
+def _opposite_color(color: StoneColor | str) -> Literal["X", "O"]:
     return "O" if color == "X" else "X"
 
 
-def _participant_color(row: dict, user_id: str) -> str | None:
+def _participant_color(row: MultiplayerGameRow, user_id: str) -> Literal["X", "O"] | None:
     """Return 'X' / 'O' if `user_id` is host/guest, else None.
 
     When `host_color is None` (host let the guest pick and they haven't
     joined yet), we still need to identify the host as a participant —
     fall back to the role rather than the colour."""
-    if str(row["host_user_id"]) == user_id:
-        return row["host_color"]  # may be None for unresolved guest-chooses
-    if row["guest_user_id"] is not None and str(row["guest_user_id"]) == user_id:
-        host_color = row["host_color"]
+    if str(row.host_user_id) == user_id:
+        return cast('Literal["X", "O"] | None', row.host_color.value if row.host_color else None)
+    if row.guest_user_id is not None and str(row.guest_user_id) == user_id:
+        host_color = row.host_color.value if row.host_color else None
         return _opposite_color(host_color) if host_color else None
     return None
 
 
-def _is_participant(row: dict, user_id: str) -> bool:
-    return str(row["host_user_id"]) == user_id or (
-        row["guest_user_id"] is not None and str(row["guest_user_id"]) == user_id
-    )
-
-
 def _build_view(
-    row: dict,
+    row: MultiplayerGameRow,
     *,
     host_username: str,
     guest_username: str | None,
     your_color: str | None,
 ) -> MultiplayerGameView:
     """Assemble the full participant view from a DB row."""
-    moves = _coerce_moves(row["moves"])
-    host_color = row["host_color"]
-    next_to_move = row["next_to_move"]
+    moves = _coerce_moves(row.moves)
+    host_color = row.host_color.value if row.host_color else None
+    next_to_move = cast(Literal["X", "O"], row.next_to_move.value)
     your_turn = (
-        your_color is not None and row["state"] == "in_progress" and your_color == next_to_move
+        your_color is not None
+        and row.state == MultiplayerGameState.IN_PROGRESS
+        and your_color == next_to_move
     )
     guest_color = _opposite_color(host_color) if (host_color and guest_username) else None
-    # The DB schema constrains host_color / guest_color to ('X','O') but
-    # asyncpg returns plain ``str``; the casts here narrow the type for
-    # Pydantic without affecting runtime behaviour.
-    _Color = Literal["X", "O"]
     return MultiplayerGameView(
-        code=row["code"],
-        state=row["state"],
-        board_size=row["board_size"],
-        rule_set=row["rule_set"],
-        host=PlayerInfo(username=host_username, color=cast("_Color | None", host_color)),
+        code=row.code,
+        state=row.state.value,
+        board_size=row.board_size,
+        rule_set=row.rule_set,
+        host=PlayerInfo(username=host_username, color=cast('Literal["X", "O"] | None', host_color)),
         guest=(
-            PlayerInfo(username=guest_username, color=cast("_Color | None", guest_color))
+            PlayerInfo(username=guest_username, color=cast('Literal["X", "O"] | None', guest_color))
             if guest_username
             else None
         ),
         moves=moves,
         next_to_move=next_to_move,
-        winner=row["winner"],
-        your_color=cast("_Color | None", your_color),
+        winner=row.winner.value if row.winner else None,
+        your_color=cast('Literal["X", "O"] | None', your_color),
         your_turn=your_turn,
-        version=row["version"],
-        color_chosen_by=row["color_chosen_by"],
-        expires_at=row["expires_at"],
-        created_at=row["created_at"],
-        finished_at=row["finished_at"],
-        invite_url=game_invite_url(row["code"]),
+        version=row.version,
+        color_chosen_by=row.color_chosen_by.value,
+        expires_at=row.expires_at,
+        created_at=row.created_at,
+        finished_at=row.finished_at,
+        invite_url=game_invite_url(row.code),
     )
 
 
 def _build_preview(
-    row: dict,
+    row: MultiplayerGameWithUsersRow,
     *,
     host_username: str,
     guest_username: str | None,
 ) -> MultiplayerGamePreview:
-    host_color = row["host_color"]
+    host_color = row.host_color.value if row.host_color else None
     guest_color = _opposite_color(host_color) if (host_color and guest_username) else None
-    _Color = Literal["X", "O"]
     return MultiplayerGamePreview(
-        code=row["code"],
-        state=row["state"],
-        board_size=row["board_size"],
-        rule_set=row["rule_set"],
-        host=PlayerInfo(username=host_username, color=cast("_Color | None", host_color)),
+        code=row.code,
+        state=row.state.value,
+        board_size=row.board_size,
+        rule_set=row.rule_set,
+        host=PlayerInfo(username=host_username, color=cast('Literal["X", "O"] | None', host_color)),
         guest=(
-            PlayerInfo(username=guest_username, color=cast("_Color | None", guest_color))
+            PlayerInfo(username=guest_username, color=cast('Literal["X", "O"] | None', guest_color))
             if guest_username
             else None
         ),
-        next_to_move=row["next_to_move"],
-        winner=row["winner"],
-        version=row["version"],
-        color_chosen_by=row["color_chosen_by"],
-        expires_at=row["expires_at"],
-        created_at=row["created_at"],
-        finished_at=row["finished_at"],
+        next_to_move=row.next_to_move.value,
+        winner=row.winner.value if row.winner else None,
+        version=row.version,
+        color_chosen_by=row.color_chosen_by.value,
+        expires_at=row.expires_at,
+        created_at=row.created_at,
+        finished_at=row.finished_at,
     )
 
 
@@ -168,42 +186,19 @@ async def _expire_if_stale(conn, code: str) -> None:
     state change on their next poll. Per `doc/multiplayer-modal-plan.md`
     §3 — no background sweeper required for the modal flow.
     """
-    await conn.execute(
-        """
-        UPDATE multiplayer_games
-        SET    state      = 'cancelled',
-               version    = version + 1,
-               updated_at = NOW()
-        WHERE  code = $1
-          AND  state = 'waiting'
-          AND  expires_at <= NOW()
-        """,
-        code,
-    )
+    await mp_db.expire_waiting_if_stale(conn, code)
 
 
-async def _fetch_with_usernames(conn, code: str) -> dict | None:
-    """Return a dict with all multiplayer_games columns plus
+async def _fetch_with_usernames(conn, code: str) -> MultiplayerGameWithUsersRow | None:
+    """Return a typed row with all multiplayer_games columns plus
     `host_username` and `guest_username`, or None if missing."""
-    row = await conn.fetchrow(
-        """
-        SELECT mg.*,
-               hu.username AS host_username,
-               gu.username AS guest_username
-        FROM multiplayer_games mg
-        JOIN users hu ON hu.id = mg.host_user_id
-        LEFT JOIN users gu ON gu.id = mg.guest_user_id
-        WHERE mg.code = $1
-        """,
-        code,
-    )
-    return dict(row) if row else None
+    return await mp_db.fetch_game_with_usernames_by_code(conn, code)
 
 
 async def _write_finished_games_rows(
     conn,
     *,
-    mp_row: dict,
+    mp_row: MultiplayerGameRow,
     host_username: str,
     guest_username: str,
     winner: str,
@@ -214,10 +209,10 @@ async def _write_finished_games_rows(
     `game_type='multiplayer'` admits the depth/radius/total_moves zero
     sentinels (see migration 0006 + `doc/multiplayer-bugs.md` item #1).
     """
-    assert mp_row["guest_user_id"] is not None, (
+    assert mp_row.guest_user_id is not None, (
         "_write_finished_games_rows must only be called once a guest has joined"
     )
-    host_color = mp_row["host_color"]
+    host_color = mp_row.host_color.value if mp_row.host_color else "X"
     guest_color_for_json = _opposite_color(host_color)
     winner_username = (
         host_username
@@ -231,7 +226,7 @@ async def _write_finished_games_rows(
     )
     game_json = json_mod.dumps(
         {
-            "multiplayer_game_id": str(mp_row["id"]),
+            "multiplayer_game_id": str(mp_row.id),
             "game_type": "multiplayer",
             "host": {"username": host_username, "color": host_color},
             "guest": {"username": guest_username, "color": guest_color_for_json},
@@ -245,8 +240,8 @@ async def _write_finished_games_rows(
             "winner_username": winner_username,
             "loser_username": loser_username,
             "moves": [list(m) for m in moves],
-            "rule_set": mp_row["rule_set"],
-            "board_size": mp_row["board_size"],
+            "rule_set": mp_row.rule_set,
+            "board_size": mp_row.board_size,
             # Legacy convenience field — duplicate of winner_color for tools
             # already keying off `winner`.
             "winner": winner,
@@ -256,95 +251,62 @@ async def _write_finished_games_rows(
         }
     )
     total_moves = len(moves)
-    host_color = mp_row["host_color"]
+    host_color = mp_row.host_color.value if mp_row.host_color else "X"
     guest_color = _opposite_color(host_color)
-    host_user_id = str(mp_row["host_user_id"])
-    guest_user_id = str(mp_row["guest_user_id"])
+    host_user_id = str(mp_row.host_user_id)
+    guest_user_id = str(mp_row.guest_user_id)
 
     # Live Elo update for both players. Host's score is 1.0 if host_color
     # won, 0.5 on draw, 0.0 on loss; guest's is the symmetric value.
-    host_row = await conn.fetchrow(
-        "SELECT elo_rating, elo_peak, elo_games_count FROM users WHERE id = $1::uuid",
-        host_user_id,
-    )
-    guest_row = await conn.fetchrow(
-        "SELECT elo_rating, elo_peak, elo_games_count FROM users WHERE id = $1::uuid",
-        guest_user_id,
-    )
-    host_elo_before = int(host_row["elo_rating"])
-    guest_elo_before = int(guest_row["elo_rating"])
+    host_row = await mp_db.fetch_user_elo_snapshot(conn, host_user_id)
+    guest_row = await mp_db.fetch_user_elo_snapshot(conn, guest_user_id)
+    host_elo_before = int(host_row.elo_rating)
+    guest_elo_before = int(guest_row.elo_rating)
     if winner == "draw":
         host_score, guest_score = 0.5, 0.5
     elif winner == host_color:
         host_score, guest_score = 1.0, 0.0
     else:
         host_score, guest_score = 0.0, 1.0
-    host_k = k_factor(int(host_row["elo_games_count"]), host_elo_before)
-    guest_k = k_factor(int(guest_row["elo_games_count"]), guest_elo_before)
+    host_k = k_factor(int(host_row.elo_games_count), host_elo_before)
+    guest_k = k_factor(int(guest_row.elo_games_count), guest_elo_before)
     host_elo_after = elo_update(host_elo_before, guest_elo_before, host_score, host_k)
     guest_elo_after = elo_update(guest_elo_before, host_elo_before, guest_score, guest_k)
 
-    insert_sql = """
-        INSERT INTO games
-          (username, user_id, winner, human_player, board_size, depth, radius,
-           total_moves, human_time_s, ai_time_s, score, game_json,
-           game_type, opponent_id, elo_before, elo_after, opponent_elo_before)
-        VALUES ($1, $2::uuid, $3, $4, $5, 0, 0,
-                $6, 0, 0, 0, $7::jsonb, 'multiplayer', $8::uuid,
-                $9, $10, $11)
-    """
     # Host row — opponent is the guest.
-    await conn.execute(
-        insert_sql,
-        host_username,
-        host_user_id,
-        winner,
-        host_color,
-        mp_row["board_size"],
-        total_moves,
-        game_json,
-        guest_user_id,
-        host_elo_before,
-        host_elo_after,
-        guest_elo_before,
+    await mp_db.insert_finished_game_history_row(
+        conn,
+        username=host_username,
+        user_id=host_user_id,
+        winner=winner,
+        human_player=host_color,
+        board_size=mp_row.board_size,
+        total_moves=total_moves,
+        game_json=game_json,
+        opponent_id=guest_user_id,
+        elo_before=host_elo_before,
+        elo_after=host_elo_after,
+        opponent_elo_before=guest_elo_before,
     )
     # Guest row — opponent is the host.
-    await conn.execute(
-        insert_sql,
-        guest_username,
-        guest_user_id,
-        winner,
-        guest_color,
-        mp_row["board_size"],
-        total_moves,
-        game_json,
-        host_user_id,
-        guest_elo_before,
-        guest_elo_after,
-        host_elo_before,
+    await mp_db.insert_finished_game_history_row(
+        conn,
+        username=guest_username,
+        user_id=guest_user_id,
+        winner=winner,
+        human_player=guest_color,
+        board_size=mp_row.board_size,
+        total_moves=total_moves,
+        game_json=game_json,
+        opponent_id=host_user_id,
+        elo_before=guest_elo_before,
+        elo_after=guest_elo_after,
+        opponent_elo_before=host_elo_before,
     )
 
     # Roll the new ratings forward on the users table.
-    await conn.execute(
-        """UPDATE users
-              SET elo_rating = $2,
-                  elo_peak = GREATEST(elo_peak, $2),
-                  elo_games_count = elo_games_count + 1,
-                  updated_at = now()
-            WHERE id = $1::uuid""",
-        host_user_id,
-        host_elo_after,
-    )
-    await conn.execute(
-        """UPDATE users
-              SET elo_rating = $2,
-                  elo_peak = GREATEST(elo_peak, $2),
-                  elo_games_count = elo_games_count + 1,
-                  updated_at = now()
-            WHERE id = $1::uuid""",
-        guest_user_id,
-        guest_elo_after,
-    )
+    await mp_db.update_user_elo(conn, user_id=host_user_id, elo_after=host_elo_after)
+    await mp_db.update_user_elo(conn, user_id=guest_user_id, elo_after=guest_elo_after)
 
 
 # ---------------------------------------------------------------------------
@@ -358,7 +320,7 @@ async def new_game(
     user: dict = Depends(get_current_user),
     pool=Depends(get_pool),
 ):
-    color_chosen_by = "host" if body.host_color is not None else "guest"
+    color_chosen_by = ColorChosenBy.HOST if body.host_color is not None else ColorChosenBy.GUEST
     async with pool.acquire() as conn:
         async with conn.transaction():
             try:
@@ -366,15 +328,12 @@ async def new_game(
                     conn,
                     host_user_id=str(user["id"]),
                     host_color=body.host_color,
-                    color_chosen_by=color_chosen_by,
+                    color_chosen_by=color_chosen_by.value,
                     board_size=body.board_size,
-                    created_via="modal",
+                    created_via=MultiplayerCreatedVia.MODAL,
                 )
-            except RuntimeError as exc:
-                raise HTTPException(
-                    status.HTTP_503_SERVICE_UNAVAILABLE,
-                    str(exc),
-                )
+            except RuntimeError:
+                raise FailedToAllocateCode()
     your_color = body.host_color  # may be None when guest chooses
     return _build_view(
         row,
@@ -392,29 +351,15 @@ async def my_games(
 ):
     """Return the caller's recent multiplayer games (host or guest), DESC by created_at."""
     user_id = str(user["id"])
-    rows = await pool.fetch(
-        """
-        SELECT mg.*,
-               hu.username AS host_username,
-               gu.username AS guest_username
-        FROM multiplayer_games mg
-        JOIN users hu ON hu.id = mg.host_user_id
-        LEFT JOIN users gu ON gu.id = mg.guest_user_id
-        WHERE mg.host_user_id = $1::uuid OR mg.guest_user_id = $1::uuid
-        ORDER BY mg.created_at DESC
-        LIMIT $2
-        """,
-        user_id,
-        limit,
-    )
+    async with pool.acquire() as conn:
+        rows = await mp_db.list_games_with_usernames_for_user(conn, user_id, limit)
     out: list[dict] = []
-    for r in rows:
-        rd = dict(r)
-        your_color = _participant_color(rd, user_id)
+    for row in rows:
+        your_color = _participant_color(row, user_id)
         view = _build_view(
-            rd,
-            host_username=rd["host_username"],
-            guest_username=rd["guest_username"],
+            row,
+            host_username=row.host_username,
+            guest_username=row.guest_username,
             your_color=your_color,
         )
         out.append(view.model_dump(mode="json"))
@@ -433,64 +378,41 @@ async def join_game(
         async with conn.transaction():
             await _expire_if_stale(conn, code)
 
-            existing_rec = await conn.fetchrow(
-                "SELECT * FROM multiplayer_games WHERE code = $1 FOR UPDATE",
-                code,
-            )
-            if existing_rec is None:
-                raise HTTPException(status.HTTP_404_NOT_FOUND, "multiplayer_game_not_found")
-            existing = dict(existing_rec)
+            existing = await mp_db.fetch_game_by_code_for_update(conn, code)
+            if existing is None:
+                raise MultiplayerGameNotFound()
 
             # Pre-flight checks before mutating.
-            if str(existing["host_user_id"]) == user_id:
-                raise HTTPException(status.HTTP_409_CONFLICT, "cannot_join_own_game")
-            if existing["state"] == "cancelled":
-                raise HTTPException(status.HTTP_409_CONFLICT, "game_cancelled")
-            if existing["guest_user_id"] is not None:
-                raise HTTPException(status.HTTP_409_CONFLICT, "game_already_full")
-            if existing["state"] != "waiting":
-                raise HTTPException(status.HTTP_409_CONFLICT, "game_not_in_waiting_state")
+            if str(existing.host_user_id) == user_id:
+                raise CannotJoinOwnGame()
+            if existing.state == MultiplayerGameState.CANCELLED:
+                raise GameCancelled()
+            if existing.guest_user_id is not None:
+                raise GameAlreadyFull()
+            if existing.state != MultiplayerGameState.WAITING:
+                raise GameNotInWaitingState()
 
-            color_chosen_by = existing["color_chosen_by"]
+            color_chosen_by = existing.color_chosen_by
             chosen = body.chosen_color
-            if color_chosen_by == "guest":
+            if color_chosen_by == ColorChosenBy.GUEST:
                 if chosen is None:
-                    raise HTTPException(
-                        status.HTTP_422_UNPROCESSABLE_ENTITY,
-                        "chosen_color_required",
-                    )
+                    raise ChosenColorRequired()
                 # Guest picks their colour; host gets the opposite.
                 new_host_color = _opposite_color(chosen)
             else:
                 if chosen is not None:
-                    raise HTTPException(
-                        status.HTTP_422_UNPROCESSABLE_ENTITY,
-                        "chosen_color_not_allowed",
-                    )
-                new_host_color = existing["host_color"]
+                    raise ChosenColorNotAllowed()
+                new_host_color = existing.host_color.value if existing.host_color else "X"
 
-            updated = await conn.fetchrow(
-                """
-                UPDATE multiplayer_games
-                SET    guest_user_id = $1::uuid,
-                       host_color    = $3,
-                       state         = 'in_progress',
-                       version       = version + 1,
-                       updated_at    = NOW()
-                WHERE  code = $2
-                RETURNING *
-                """,
-                user_id,
-                code,
-                new_host_color,
-            )
-            row = dict(updated)
-            host_username = await conn.fetchval(
-                "SELECT username FROM users WHERE id = $1::uuid",
-                str(row["host_user_id"]),
-            )
+            row = await mp_db.update_join_game(conn, code, user_id, new_host_color)
+            # `host_user_id` is a NOT NULL FK to `users`, so the lookup
+            # never legitimately returns None — the `or '?'` only narrows
+            # the static type for `_build_view(host_username: str)`.
+            host_username = (
+                await mp_db.fetch_username_by_id(conn, str(row.host_user_id))
+            ) or "?"
 
-    your_color = _opposite_color(row["host_color"])
+    your_color = _opposite_color(row.host_color.value if row.host_color else "X")
     return _build_view(
         row,
         host_username=host_username,
@@ -510,49 +432,22 @@ async def cancel_game(
     user_id = str(user["id"])
     async with pool.acquire() as conn:
         async with conn.transaction():
-            row_rec = await conn.fetchrow(
-                """
-                SELECT mg.*,
-                       hu.username AS host_username,
-                       gu.username AS guest_username
-                FROM multiplayer_games mg
-                JOIN users hu ON hu.id = mg.host_user_id
-                LEFT JOIN users gu ON gu.id = mg.guest_user_id
-                WHERE mg.code = $1
-                FOR UPDATE OF mg
-                """,
-                code,
-            )
-            if row_rec is None:
-                raise HTTPException(status.HTTP_404_NOT_FOUND, "multiplayer_game_not_found")
-            row = dict(row_rec)
+            row = await mp_db.fetch_game_with_usernames_by_code_for_update(conn, code)
+            if row is None:
+                raise MultiplayerGameNotFound()
 
-            if str(row["host_user_id"]) != user_id:
-                raise HTTPException(status.HTTP_403_FORBIDDEN, "not_the_host")
-            if row["state"] != "waiting":
-                raise HTTPException(
-                    status.HTTP_409_CONFLICT,
-                    f"cannot_cancel_in_state_{row['state']}",
-                )
+            if str(row.host_user_id) != user_id:
+                raise NotTheHost()
+            if row.state != MultiplayerGameState.WAITING:
+                raise CannotCancelInState(row.state.value)
 
-            updated = await conn.fetchrow(
-                """
-                UPDATE multiplayer_games
-                SET    state      = 'cancelled',
-                       version    = version + 1,
-                       updated_at = NOW()
-                WHERE  id = $1
-                RETURNING *
-                """,
-                row["id"],
-            )
-            row = dict(updated)
+            row = await mp_db.update_cancel_game_by_id(conn, str(row.id))
 
     your_color = _participant_color(row, user_id)
     return _build_view(
         row,
-        host_username=row_rec["host_username"],
-        guest_username=row_rec["guest_username"],
+        host_username=user["username"],
+        guest_username=None,
         your_color=your_color,
     )
 
@@ -560,6 +455,7 @@ async def cancel_game(
 @router.get("/{code}")
 async def get_game(
     code: str,
+    request: Request,
     response: Response,  # noqa: ARG001
     since_version: int | None = Query(default=None, ge=0),
     user: dict = Depends(get_current_user),
@@ -569,28 +465,44 @@ async def get_game(
         await _expire_if_stale(conn, code)
         row = await _fetch_with_usernames(conn, code)
     if row is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "multiplayer_game_not_found")
+        raise MultiplayerGameNotFound()
 
-    if since_version is not None and row["version"] <= since_version:
+    if since_version is not None and row.version <= since_version:
+        # Two response shapes for the "no change since `since_version`"
+        # branch, chosen by an opt-in request header so the backend can be
+        # rolled out ahead of the frontend without breaking deployed clients:
+        #
+        #   - Default (no header): HTTP 304 with an empty body. Legacy
+        #     contract. Chrome logs a "Fetch failed loading" protocol
+        #     error once per poll because the request didn't carry a
+        #     conditional validator (the browser cache layer normally
+        #     adds those, but we don't go through it). The fetch promise
+        #     still resolves with status 304 so JS reads it cleanly.
+        #
+        #   - With `X-Accept-No-Change: 1`: HTTP 200 with a small JSON
+        #     sentinel `{no_change: true, version: N}`. Modern clients
+        #     send this header so the polling loop is silent in devtools.
+        if request.headers.get("x-accept-no-change") == "1":
+            return JSONResponse(content={"no_change": True, "version": row.version})
         return Response(status_code=status.HTTP_304_NOT_MODIFIED)
 
     user_id = str(user["id"])
-    is_host = str(row["host_user_id"]) == user_id
-    is_guest = row["guest_user_id"] is not None and str(row["guest_user_id"]) == user_id
+    is_host = str(row.host_user_id) == user_id
+    is_guest = row.guest_user_id is not None and str(row.guest_user_id) == user_id
 
     if not (is_host or is_guest):
         preview = _build_preview(
             row,
-            host_username=row["host_username"],
-            guest_username=row["guest_username"],
+            host_username=row.host_username,
+            guest_username=row.guest_username,
         )
         return JSONResponse(content=preview.model_dump(mode="json"))
 
     your_color = _participant_color(row, user_id)
     view = _build_view(
         row,
-        host_username=row["host_username"],
-        guest_username=row["guest_username"],
+        host_username=row.host_username,
+        guest_username=row.guest_username,
         your_color=your_color,
     )
     return JSONResponse(content=view.model_dump(mode="json"))
@@ -606,79 +518,53 @@ async def make_move(
     user_id = str(user["id"])
     async with pool.acquire() as conn:
         async with conn.transaction():
-            row_rec = await conn.fetchrow(
-                """
-                SELECT mg.*, hu.username AS host_username, gu.username AS guest_username
-                FROM multiplayer_games mg
-                JOIN users hu ON hu.id = mg.host_user_id
-                LEFT JOIN users gu ON gu.id = mg.guest_user_id
-                WHERE mg.code = $1
-                FOR UPDATE OF mg
-                """,
-                code,
-            )
-            if row_rec is None:
-                raise HTTPException(status.HTTP_404_NOT_FOUND, "multiplayer_game_not_found")
-            row = dict(row_rec)
+            row = await mp_db.fetch_game_with_usernames_by_code_for_update(conn, code)
+            if row is None:
+                raise MultiplayerGameNotFound()
 
             your_color = _participant_color(row, user_id)
             if your_color is None:
-                raise HTTPException(status.HTTP_403_FORBIDDEN, "not_a_participant")
+                raise NotAParticipant()
 
-            if row["state"] != "in_progress":
-                raise HTTPException(status.HTTP_409_CONFLICT, "game_not_in_progress")
+            if row.state != MultiplayerGameState.IN_PROGRESS:
+                raise GameNotInProgress()
 
             x, y = int(body.x), int(body.y)
-            board_size = row["board_size"]
+            board_size = row.board_size
             # Single canonical OOB check — keeps the wire contract on a
             # consistent 400 regardless of which axis or whether the value
             # would also fail a Pydantic upper bound (see
             # doc/multiplayer-bugs.md item #7).
             if not (0 <= x < board_size and 0 <= y < board_size):
-                raise HTTPException(status.HTTP_400_BAD_REQUEST, "out_of_bounds")
+                raise OutOfBounds()
 
-            if body.expected_version != row["version"]:
-                raise HTTPException(status.HTTP_409_CONFLICT, "version_conflict")
+            if body.expected_version != row.version:
+                raise VersionConflict()
 
-            if your_color != row["next_to_move"]:
-                raise HTTPException(status.HTTP_409_CONFLICT, "not_your_turn")
+            if your_color != row.next_to_move.value:
+                raise NotYourTurn()
 
-            moves = _coerce_moves(row["moves"])
+            moves = _coerce_moves(row.moves)
             if (x, y) in {(mx, my) for mx, my in moves}:
-                raise HTTPException(status.HTTP_409_CONFLICT, "square_occupied")
+                raise SquareOccupied()
 
             moves.append((x, y))
 
             won = has_winner(moves, x, y, your_color, board_size)
             new_state = "finished" if won else "in_progress"
             new_winner = your_color if won else None
-            next_to_move = row["next_to_move"] if won else _opposite_color(row["next_to_move"])
-
-            new_moves_json = json_mod.dumps([list(m) for m in moves])
-
-            updated = await conn.fetchrow(
-                """
-                UPDATE multiplayer_games
-                SET    moves         = $1::jsonb,
-                       next_to_move  = $2,
-                       version       = version + 1,
-                       updated_at    = NOW(),
-                       state         = $3::varchar,
-                       winner        = $4,
-                       finished_at   = CASE
-                           WHEN $3::varchar = 'finished' THEN NOW()
-                           ELSE finished_at
-                       END
-                WHERE  id = $5
-                RETURNING *
-                """,
-                new_moves_json,
-                next_to_move,
-                new_state,
-                new_winner,
-                row["id"],
+            next_to_move = (
+                row.next_to_move.value if won else _opposite_color(row.next_to_move.value)
             )
-            updated_row = dict(updated)
+
+            updated_row = await mp_db.update_game_after_move(
+                conn,
+                game_id=str(row.id),
+                moves=moves,
+                next_to_move=next_to_move,
+                new_state=new_state,
+                new_winner=new_winner,
+            )
 
             if won:
                 # `won` implies `new_winner is not None` — narrow for the
@@ -687,16 +573,16 @@ async def make_move(
                 await _write_finished_games_rows(
                     conn,
                     mp_row=updated_row,
-                    host_username=row["host_username"],
-                    guest_username=row["guest_username"],
+                    host_username=row.host_username,
+                    guest_username=cast(str, row.guest_username),
                     winner=new_winner,
                     moves=moves,
                 )
 
     return _build_view(
         updated_row,
-        host_username=row["host_username"],
-        guest_username=row["guest_username"],
+        host_username=row.host_username,
+        guest_username=row.guest_username,
         your_color=your_color,
     )
 
@@ -711,57 +597,34 @@ async def resign_game(
     user_id = str(user["id"])
     async with pool.acquire() as conn:
         async with conn.transaction():
-            row_rec = await conn.fetchrow(
-                """
-                SELECT mg.*, hu.username AS host_username, gu.username AS guest_username
-                FROM multiplayer_games mg
-                JOIN users hu ON hu.id = mg.host_user_id
-                LEFT JOIN users gu ON gu.id = mg.guest_user_id
-                WHERE mg.code = $1
-                FOR UPDATE OF mg
-                """,
-                code,
-            )
-            if row_rec is None:
-                raise HTTPException(status.HTTP_404_NOT_FOUND, "multiplayer_game_not_found")
-            row = dict(row_rec)
+            row = await mp_db.fetch_game_with_usernames_by_code_for_update(conn, code)
+            if row is None:
+                raise MultiplayerGameNotFound()
 
             your_color = _participant_color(row, user_id)
             if your_color is None:
-                raise HTTPException(status.HTTP_403_FORBIDDEN, "not_a_participant")
-            if row["state"] != "in_progress":
-                raise HTTPException(status.HTTP_409_CONFLICT, "game_not_in_progress")
+                raise NotAParticipant()
+            if row.state != MultiplayerGameState.IN_PROGRESS:
+                raise GameNotInProgress()
 
             winner = _opposite_color(your_color)
-            updated = await conn.fetchrow(
-                """
-                UPDATE multiplayer_games
-                SET    state       = 'finished',
-                       winner      = $1,
-                       version     = version + 1,
-                       updated_at  = NOW(),
-                       finished_at = NOW()
-                WHERE  id = $2
-                RETURNING *
-                """,
-                winner,
-                row["id"],
+            updated_row = await mp_db.update_game_after_resign(
+                conn, game_id=str(row.id), winner=winner
             )
-            updated_row = dict(updated)
 
-            moves = _coerce_moves(updated_row["moves"])
+            moves = _coerce_moves(updated_row.moves)
             await _write_finished_games_rows(
                 conn,
                 mp_row=updated_row,
-                host_username=row["host_username"],
-                guest_username=row["guest_username"],
+                host_username=row.host_username,
+                guest_username=cast(str, row.guest_username),
                 winner=winner,
                 moves=moves,
             )
 
     return _build_view(
         updated_row,
-        host_username=row["host_username"],
-        guest_username=row["guest_username"],
+        host_username=row.host_username,
+        guest_username=row.guest_username,
         your_color=your_color,
     )

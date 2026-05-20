@@ -5,6 +5,8 @@ output:
 pre-commit:
   parallel: true
   jobs:
+    #—————————————————————————————————————————————————————————————————————
+    # Python Checks
     - name: lint
       root: api
       run: uv run --group dev ruff check {staged_files}
@@ -20,32 +22,70 @@ pre-commit:
     - name: check for conflict markers and whitespace issues
       run: git --no-pager diff --check
 
-    - name: run tests for C-Gomoku
-      run: just test-daemon
-        
     - name: run tests for FastAPI
       run: just test-api
         
-    - name: run tests for Frontend
-      run: just test-frontend
-
     - name: sort pyproject.toml dependencies
       root: api
       run: uv run --group dev uv-sort {staged_files}
       glob: "pyproject.toml"
       stage_fixed: true
 
-    - name: spell check
-      root: api
-      run: uv run --group dev codespell {staged_files}
-      glob: "*.{py,ipynb,md}"
+    #—————————————————————————————————————————————————————————————————————
+    # C-Sources Checks
+    - name: run tests for C-Gomoku
+      run: just test-daemon
+        
+    #—————————————————————————————————————————————————————————————————————
+    # ReactJS Checks
+    - name: run tests for Frontend
+      run: just test-frontend
 
+    #—————————————————————————————————————————————————————————————————————
+    # Rust Checks
+    - name: rustfmt
+      root: "./gomoku-httpd-rust/"
+      glob: "./gomoku-httpd-rust/**/*.rs"
+      run: cargo fmt --all -- --check
+
+    - name: clippy
+      root: "./gomoku-httpd-rust/"
+      run: cargo clippy --all-targets --all-features -- -D warnings
+      glob: "./gomoku-httpd-rust/**/*.{rs,toml}"
+
+    - name: cargo test
+      root: "./gomoku-httpd-rust/"
+      run: cargo test --all-features
+      glob: "./gomoku-httpd-rust/**/*.{rs,toml}"
+
+    - name: cargo doc
+      root: "./gomoku-httpd-rust/"
+      run: cargo doc --no-deps --document-private-items --quiet
+      env:
+        RUSTDOCFLAGS: "-D warnings"
+      glob: "./gomoku-httpd-rust/**/*.{rs,toml}"
+
+    #—————————————————————————————————————————————————————————————————————
+    # Below applies to the entire repo
+    #—————————————————————————————————————————————————————————————————————
+
+    - name: conflict markers and whitespace
+      root: "./gomoku-httpd-rust/"
+      run: git --no-pager diff --check
+
+    # Reformat Markdown 
     - name: format markdown
-      root: api
       run: uv run --group dev mdformat {staged_files}
       glob: "*.md"
       stage_fixed: true
 
+    # Scan for Secrets
     - name: scan for secrets
       root: api
       run: uv run --group dev detect-secrets-hook --baseline .secrets.baseline
+
+    # Spell Check Across all Sources
+    - name: spell check
+      root: api
+      run: uv run --group dev codespell {staged_files}
+      glob: "*.{py,ipynb,md,c,rs}"

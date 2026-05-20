@@ -1,12 +1,86 @@
-# PR #95 Rework — Solo/Multi tabs + chat panel + slash commands + backend
+# Gomoku Project
 
-## Context
+Welcome to Gomoku Project.
+
+Gomoku, also called "five in a row", is an abstract strategy board game. It is traditionally played with Go pieces (black and white stones) on a 15×15 Go board while in the past a 19×19 board was standard. Because pieces are typically not moved or removed from the board, gomoku may also be played as a paper-and-pencil game. The game is known in several countries under different names, like "crosses and naughts", etc.
+
+## Gomoku Components
+
+Currently, building the game with `make clean all` results in:
+
+- a single binary `gomoku` that plays with the AI by the default, but accepts many CLI flags to adjust the difficulty.
+
+- a single binary `gomoku-httpd` which listens on a HTTP port to POST to /gomoku/play and expect to receive a JSON response, schema for which is in the `doc` folder.
+
+- A single binary `gomoku-http-test` (with it's own CLI) that connects to the port of `gomoku-httpd` (or several) and plays a game where the state is on the client's side, but the servers receive JSON representing a game state, they figure out how's next, and find the best move, returning the JSON with one additional move unless there is a win.
+
+- We now have a web front-end that can talk to the `gomoku-httpd` daemon and make it play against itself.
+
+- We also now have the cluster version that works locally in development (on a MacBook):
+
+  - in development, first run `bin/gctl setup` to get everything installed and setup. The bash setup function is an aggregation function which calls four more specific setups.
+  - in the development we should be starting the game cluster with `bin/gctl start` (starts envoy reverse proxy, nginx, gomoku-httpd).
+  - or `bin/gctl start [ -p haproxy ]` to use haproxy instead
+  - stopped with `gctl stop`
+  - restarted with `gctl restart`
+  - monitored with `gctl observe [ htop | btop | ctop | btm ]`
+  - monitored with `gctl ps` — prints all the processes related to the cluster using a custom format ps sequence: PID, PPID, %CPU, %MEM, ARGS
+
+### Current Deploy
+
+The canonical deploy command is **`just deploy`** — it sources `.env` at repo root, runs Alembic migrations against the production database, builds the frontend + Docker images for `linux/amd64`, applies Terraform, and posts a deploy marker to Honeycomb. The actual logic lives in `bin/deploy`.
+
+Required `.env` keys at repo root (deploy-time only — never read at runtime):
+
+- `PRODUCTION_DATABASE_URL` — Neon pooled DSN
+- `PRODUCTION_JWT_SECRET` — HMAC key (`just jwt-secret` to generate)
+- `HONEYCOMB_INGEST_API_KEY` — runtime tracing
+- `HONEYCOMB_CONFIG_API_KEY` — deploy markers
+- `PROJECT_ID`, `REGION`
+
+Legacy `just cr-init` and `just cr-update` still exist as escape hatches but skip migrations — prefer `just deploy`.
+
+### Runtime Configuration
+
+The FastAPI app loads `api/.env.{development,test,ci}[.local]` based on the `ENVIRONMENT` env var (default `development`). The `.local` overlays are gitignored for personal overrides (e.g., pointing local dev at Neon). Production runtime config arrives via Cloud Run env vars set by Terraform; no `.env` file is read in production.
+
+### Tests
+
+`just test-api` runs the API test suite in parallel across 4 workers via pytest-xdist (currently ~145 tests; multiplayer adds 56). Each worker gets its own `gomoku_test_gw{N}` database, dropped at session end. Sequential `just test` from `api/` also works for debugging.
+
+### Multiplayer (human vs human)
+
+The FastAPI server hosts a complete two-human game flow under
+`/multiplayer/*` (see `api/app/routers/multiplayer.py`). The frontend's
+`ChooseGameTypeModal` lets a logged-in user pick AI or Another Player —
+the latter generates a 15-minute invite link (`/play/<6-char>`) the host
+shares. Highlights a future maintainer should know:
+
+- **No SQLAlchemy** — all DB access is asyncpg + raw SQL, with savepoints
+  for the code-collision retry path.
+- **Schema discriminator** — `games.game_type IN ('ai','multiplayer')` keeps
+  the strict AI invariants (`depth>=1`, `radius>=1`, `total_moves>0`)
+  while admitting `0/0/0` sentinels for multiplayer history rows.
+- **Lazy expiry** — every read of a `waiting` game past its `expires_at`
+  flips it to `cancelled`; no background sweeper is required for the
+  modal flow.
+- **Tiered polling** — both `useMultiplayerPolling` and
+  `useMultiplayerHostPolling` use `pollingIntervalForElapsedMs`:
+  300 ms for the first 10 min, 2 s up to 30 min, 3 s up to 60 min,
+  5 s thereafter. Wall-clock caps remain (15 min waiting, 8 h in-progress).
+
+Reference docs: `doc/human-vs-human-plan.md` (architecture & API),
+`doc/multiplayer-modal-plan.md` (UX), `doc/multiplayer-bugs.md`
+(historical issues that drove the current design).
+
+## PR #95 Rework — Solo/Multi tabs + chat panel + slash commands + backend
 
 PR #95 (`kig/sidepanel-tabs-and-chat`) was reviewed and received "request changes." The code quality is solid — tests pass (181 pytest, 54 vitest, 7 Cypress), types check, lints clean — but there are architectural problems that need fixing before merge. This file describes exactly what to change.
 
 The branch has two commits:
+
 1. `34eda87` — Frontend: SidePanelTabs, ChatPanel, slash command parsing
-2. `40084a9` — Backend: chat.py, social.py routers, migration 0009
+1. `40084a9` — Backend: chat.py, social.py routers, migration 0009
 
 ## Required Changes (must fix)
 
@@ -26,6 +100,7 @@ LIMIT 1
 If no row exists, raise `HTTPException(status.HTTP_403_FORBIDDEN, "must_follow_or_be_followed")`.
 
 Add tests in `api/tests/test_chat_invite.py`:
+
 - `test_invite_without_relationship_returns_403` — neither follows the other, expect 403
 - `test_invite_when_caller_follows_target_succeeds` — caller follows target, expect 200
 - `test_invite_when_target_follows_caller_succeeds` — target follows caller, expect 200
@@ -35,12 +110,14 @@ Add tests in `api/tests/test_chat_invite.py`:
 **Problem:** `/social/unfollow` terminates an active multiplayer game if the unfollow severs the "last link" between two players. This creates a bizarre coupling where a game's liveness depends on social graph state that neither player can see in the game UI. A user unfollowing someone shouldn't silently kill their game.
 
 **Fix:** In `api/app/routers/social.py`, in the `unfollow()` endpoint, remove ALL game termination logic. The endpoint should:
+
 1. Delete the friendship row
-2. Return `{"unfollowed": true}` (drop the `game_terminated` field entirely from the unfollow response)
+1. Return `{"unfollowed": true}` (drop the `game_terminated` field entirely from the unfollow response)
 
 Only `/social/block` and explicit resign/timeout should terminate games. Update the Pydantic response model accordingly.
 
 Update `api/tests/test_social.py`:
+
 - Remove or rewrite any test that asserts `game_terminated` behavior on unfollow
 - Add `test_unfollow_does_not_terminate_active_game` — create a game between two mutual followers, have one unfollow, assert the multiplayer game state is still `in_progress`
 
@@ -62,7 +139,6 @@ import asyncpg
 from app.multiplayer.codes import new_code
 
 MAX_RETRIES = 8
-
 
 async def allocate_game(
     conn: asyncpg.Connection,
@@ -106,6 +182,7 @@ async def allocate_game(
 ```
 
 Then update both call sites:
+
 - `api/app/routers/chat.py` `invite()` — replace the inline retry loop with `code = await allocate_game(conn, caller_id)`
 - `api/app/routers/multiplayer.py` `create_game()` — replace the bare `INSERT` with `code = await allocate_game(conn, ...)`
 
@@ -118,10 +195,13 @@ Update `api/app/multiplayer/__init__.py` to export `allocate_game`.
 **Problem:** `InviteResponse.target_state` is typed as `str` with the valid values documented only in a comment.
 
 **Fix:** In `api/app/routers/chat.py`, change:
+
 ```python
 target_state: str  # 'in_game' | 'idle' | 'offline'
 ```
+
 to:
+
 ```python
 from typing import Literal
 target_state: Literal["in_game", "idle", "offline"]
@@ -162,6 +242,7 @@ Import and use in both `chat.py` and `multiplayer.py`.
 **Problem:** The PR puts current-user chat bubbles on the LEFT. Every major messaging app (iMessage, WhatsApp, Slack, Discord, Telegram) puts your messages on the right. This will confuse users.
 
 **Fix:** In `ChatPanel.tsx`, swap the alignment:
+
 - Current user bubbles: `justify-end` + `bg-blue-600 text-white` (right-aligned)
 - Peer bubbles: `justify-start` + `bg-neutral-800 border` (left-aligned)
 
@@ -171,16 +252,16 @@ These should be tracked but not addressed in this PR:
 
 1. **Split migration 0009** into two migrations: one for social graph tables (`friendships`, `blocks`) and one for chat tables (`chats`, `chat_messages`). These are independent domain concepts and rolling back chat shouldn't require rolling back the social graph. Track as tech debt.
 
-2. **Rate limiting on chat message sends.** Once the chat message persistence endpoint lands (deferred per chat.py docstring), add per-user rate limiting to prevent abuse. File now so it doesn't get forgotten.
+1. **Rate limiting on chat message sends.** Once the chat message persistence endpoint lands (deferred per chat.py docstring), add per-user rate limiting to prevent abuse. File now so it doesn't get forgotten.
 
-3. **Game expiration for invite-created games.** The PR description mentions a "15-minute lazy-expiry" for invite games where the invitee never joins, but there's no implementation. File an issue to add a background task or scheduled query that transitions stale `waiting` games to `abandoned`.
+1. **Game expiration for invite-created games.** The PR description mentions a "15-minute lazy-expiry" for invite games where the invitee never joins, but there's no implementation. File an issue to add a background task or scheduled query that transitions stale `waiting` games to `abandoned`.
 
 ## Verification Checklist
 
 After making changes, confirm:
 
 - [ ] `cd api && uv run pytest tests/ -x -q` — all pass (expect ~181+3 new tests)
-- [ ] `cd api && uv run ruff check app/ tests/`  — clean
+- [ ] `cd api && uv run ruff check app/ tests/` — clean
 - [ ] `cd api && uv run alembic downgrade -1 && uv run alembic upgrade head` — migration round-trips
 - [ ] `cd frontend && npx tsc --noEmit` — clean
 - [ ] `cd frontend && npm run build` — clean
@@ -205,6 +286,7 @@ The original Required #1 (relationship gate) is dropped. Replace the current `MA
 Both counts must exclude `/multiplayer/new` (modal) rows — add a `created_via TEXT NOT NULL CHECK (created_via IN ('modal','invite'))` column on `multiplayer_games` and pass it from each call site through `allocate_game()`. This also closes finding #3 (modal/invite conflation) and makes finding #2 (lazy-expiry interaction) moot — the count no longer cares about `state`.
 
 On exceed, raise `429` with `detail = {"error": "Your have reached invite maximum for this period.", "retry_at": <ISO timestamp>}` (the literal error string is required verbatim). `retry_at` is the later of:
+
 - `oldest_in_hour + 1h` (when hourly cap fires)
 - `oldest_in_day + 24h` (when daily cap fires)
 

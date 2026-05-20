@@ -29,6 +29,12 @@ export interface GameState {
   winner: 'none' | 'X' | 'O' | 'draw'
   board_state: string[]
   moves: MoveEntry[]
+  /** Server-issued id for the games row inserted at `/game/start`. The
+   *  client carries it through and sends it on `/game/save` so the row
+   *  is UPDATEd in place rather than duplicated. Optional because the
+   *  C engine doesn't set it and the legacy save path tolerates its
+   *  absence. */
+  game_id?: string
 }
 
 export type DisplayMode = 'stones' | 'xo'

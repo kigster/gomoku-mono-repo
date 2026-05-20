@@ -359,16 +359,91 @@ cp .env.sample .env
 $EDITOR .env
 ```
 
-| Key | What goes there |
-|---|---|
-| `PRODUCTION_DATABASE_URL` | Pooled Neon DSN |
-| `PRODUCTION_JWT_SECRET` | Generate with `just jwt-secret` |
-| `HONEYCOMB_INGEST_API_KEY` | "Ingest" key from Honeycomb → API Keys |
-| `HONEYCOMB_CONFIG_API_KEY` | "Configuration" key — used to post deploy markers |
-| `PROJECT_ID` | Your GCP project ID |
-| `REGION` | Default `us-central1` |
+##### Secrets reference
 
-Names use the `PRODUCTION_` prefix so they don't collide with the runtime config Pydantic reads inside the FastAPI app.
+The `.env` file at the repo root holds **deploy-time** keys. `bin/deploy` reads them and maps them into `TF_VAR_*` environment variables before invoking Terraform; Terraform then writes them to the Cloud Run service env. The FastAPI app at runtime reads these names directly off `process.env` — Pydantic settings load them from there, not from `.env`.
+
+| `.env` key | Runtime env on Cloud Run | Required? | What it is |
+|---|---|---|---|
+| `PROJECT_ID` | — (used by deploy only) | required | GCP project ID |
+| `REGION` | — (used by deploy only) | optional (defaults `us-central1`) | GCP region |
+| `PRODUCTION_DATABASE_URL` / `STAGING_DATABASE_URL` | `DATABASE_URL` | required | Pooled Postgres DSN. Use Neon's pooled connection (`pgbouncer=true`) — Cloud Run scales horizontally and direct connections will exhaust idle slots fast. |
+| `PRODUCTION_JWT_SECRET` / `STAGING_JWT_SECRET` | `JWT_SECRET` | required | HS256 signing key. Generate with `just jwt-secret`. **Staging must differ from production** so a leaked staging token never grants prod access. |
+| `PRODUCTION_CUSTOM_DOMAIN` / `STAGING_CUSTOM_DOMAIN` (or legacy `CUSTOM_DOMAIN`) | `CUSTOM_DOMAIN` | required | The public hostname Cloud Run is mapped to. Drives multiplayer invite URLs. |
+| `HONEYCOMB_INGEST_API_KEY` (or per-env `PRODUCTION_HONEYCOMB_INGEST_API_KEY`) | `HONEYCOMB_API_KEY` | optional | OTLP ingest key. Empty disables tracing without breaking the deploy. |
+| `HONEYCOMB_CONFIG_API_KEY` | — (used by deploy only) | optional | Posts deploy markers. Skip if you don't care about a marker line in the trace UI. |
+| `HONEYCOMB_DATASET` | `HONEYCOMB_DATASET` | optional | Only needed for the legacy 32-char Honeycomb "classic" keys; ignored for env-aware keys. |
+| `EMAIL_PROVIDER` | `EMAIL_PROVIDER` | optional (defaults `stdout`) | `stdout` logs rendered bodies (good for dev/staging); `sendgrid` sends via the SendGrid Web API. |
+| `EMAIL_FROM` | `EMAIL_FROM` | required when `EMAIL_PROVIDER=sendgrid` | A SendGrid-verified sender. Set one up at https://app.sendgrid.com/settings/sender_auth/senders before flipping the provider — unverified senders bounce with a 403. |
+| `EMAIL_FROM_NAME` | `EMAIL_FROM_NAME` | optional | Display name on the From header. |
+| `SENDGRID_API_KEY` (or per-env `PRODUCTION_SENDGRID_API_KEY`) | `SENDGRID_API_KEY` | required when `EMAIL_PROVIDER=sendgrid` | API key with **Mail Send** permission. Generate at https://app.sendgrid.com/settings/api_keys. Restrict scope — full-access keys are unnecessary. |
+
+##### Storing secrets in Google Secret Manager (recommended for production)
+
+The default flow above passes secret values through Terraform variables, which means they end up in `tfstate` (stored in GCS — encrypted at rest, but visible to anyone with bucket read access). For production you should keep the values in Secret Manager and grant only the Cloud Run runtime service account access. **One-time setup, then deploys reference the secret name instead of the value:**
+
+```bash
+# 1. Enable Secret Manager (idempotent — safe to re-run).
+gcloud services enable secretmanager.googleapis.com --project="${PROJECT_ID}"
+
+# 2. Create each secret. `--data-file=-` reads from stdin so the value
+#    never lands in your shell history. Repeat per secret name below.
+printf '%s' "$(cat /path/to/jwt-secret.txt)"        | gcloud secrets create gomoku-jwt-secret      --data-file=- --replication-policy=automatic --project="${PROJECT_ID}"
+printf '%s' "postgresql://…/gomoku?sslmode=require" | gcloud secrets create gomoku-database-url    --data-file=- --replication-policy=automatic --project="${PROJECT_ID}"
+printf '%s' "SG.…"                                  | gcloud secrets create gomoku-sendgrid-key    --data-file=- --replication-policy=automatic --project="${PROJECT_ID}"
+printf '%s' "hcaik_…"                               | gcloud secrets create gomoku-honeycomb-key   --data-file=- --replication-policy=automatic --project="${PROJECT_ID}"
+
+# 3. Find the Cloud Run runtime service account. By default it's the
+#    project's Compute Engine default SA unless you've changed it on
+#    the gomoku-api service. The grep below picks the active value.
+RUN_SA=$(gcloud run services describe gomoku-api \
+   --region="${REGION}" --project="${PROJECT_ID}" \
+   --format='value(spec.template.spec.serviceAccountName)')
+# Fallback when the field is unset on the service:
+RUN_SA="${RUN_SA:-$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')-compute@developer.gserviceaccount.com}"
+
+# 4. Grant secretAccessor on each secret to that SA.
+for s in gomoku-jwt-secret gomoku-database-url gomoku-sendgrid-key gomoku-honeycomb-key; do
+  gcloud secrets add-iam-policy-binding "$s" \
+    --member="serviceAccount:${RUN_SA}" \
+    --role=roles/secretAccessor \
+    --project="${PROJECT_ID}"
+done
+
+# 5. Rotate by adding a new version — the latest version is what the
+#    service reads on the next instance start.
+printf '%s' "new-jwt-value" | gcloud secrets versions add gomoku-jwt-secret --data-file=- --project="${PROJECT_ID}"
+```
+
+To switch the Cloud Run service from inline env values to Secret Manager references, change each `env { name = "X", value = var.x }` block in [`iac/cloud_run/main.tf`](iac/cloud_run/main.tf) to:
+
+```hcl
+env {
+  name = "JWT_SECRET"
+  value_source {
+    secret_key_ref {
+      secret  = "gomoku-jwt-secret"
+      version = "latest"
+    }
+  }
+}
+```
+
+…and drop the corresponding `TF_VAR_*` export from `bin/deploy` (the variable can stay defined in `variables.tf` for the `stdout`/dev path). The plain inline form is still committed because it's the lowest-friction onboarding for solo deploys; the Secret Manager form is the production recommendation.
+
+##### Verifying what's deployed
+
+```bash
+# Confirm the env block on the running service matches expectations.
+gcloud run services describe gomoku-api \
+  --region="${REGION}" --project="${PROJECT_ID}" \
+  --format='value(spec.template.spec.containers[0].env)' | tr ';' '\n'
+
+# List all secrets in the project.
+gcloud secrets list --project="${PROJECT_ID}"
+```
+
+Names use the `PRODUCTION_` / `STAGING_` prefix in `.env` so they don't collide with the runtime config Pydantic reads inside the FastAPI app — Cloud Run's runtime env uses the unprefixed names (`DATABASE_URL`, `JWT_SECRET`, …); the prefix-stripping happens in `bin/deploy`.
 
 #### Deploy
 
@@ -437,22 +512,43 @@ docker compose up -d
 
 Minimum setup: two containers (`gomoku-api:latest` on port 8000, `gomoku-httpd:latest` on port 8787), a reverse proxy (nginx/Caddy) for TLS. Set environment variables as shown in the [Configuration](#configuration) section.
 
-## Configuration
+## CONFIGURATION
 
-The FastAPI app loads `api/.env.{development,test,ci}[.local]` based on the `ENVIRONMENT` env var (default `development`). Committed defaults live in `api/.env.development` and `api/.env.test`; `.local` overlays are gitignored for personal overrides (e.g., pointing local dev at Neon).
+The FastAPI app loads `api/.env.{development,test,ci}[.local]` based on the `ENVIRONMENT` env var (default `development`). Committed defaults live in `api/.env.development` and `api/.env.test`; `.local` overlays are gitignored for personal overrides. In production, all values come from Cloud Run env vars set by Terraform (no `.env` file is read).
+
+The tables below split variables by whether the app can boot/run without them. See [Application Configuration](#application-configuration) below for the full reference (telemetry, database details, etc.).
+
+### Required (the app will not function correctly without these)
+
+| Variable | Required In | Purpose |
+|---|---|---|
+| `ENVIRONMENT` | always | `development`, `test`, `ci`, or `production` — selects which `.env.{stage}` file Pydantic loads. Defaults to `development`. |
+| `DATABASE_URL` | production, any non-default DB | Full PostgreSQL DSN, e.g. `postgresql://user:pass@host/gomoku`. Without this, the app falls back to `postgresql://postgres@localhost/gomoku` which only works for local development. |
+| `JWT_SECRET` | production | HMAC signing key for auth tokens. The committed default `change-me-in-production` MUST be overridden in any deployed environment. Generate with `just jwt-secret` or `openssl rand -base64 32`. |
+| `GOMOKU_HTTPD_URL` | production | URL of the upstream C game engine daemon. Defaults to `http://localhost:10000` (envoy frontend) for local clusters. |
+| `PUBLIC_DOMAIN` | production | Domain used to build outbound URLs (e.g. password-reset links in emails). Defaults to `app.gomoku.games`. |
+
+### Required when email is enabled (`EMAIL_PROVIDER=sendgrid`)
+
+| Variable | Purpose |
+|---|---|
+| `EMAIL_PROVIDER` | Set to `sendgrid` in production. Default `stdout` writes reset links to the console (development only). |
+| `SENDGRID_API_KEY` | SendGrid Web API v3 bearer token. Create at <https://app.sendgrid.com/settings/api_keys>. The app raises `RuntimeError` at send time if `EMAIL_PROVIDER=sendgrid` and this is unset. |
+| `EMAIL_FROM` | Sender address. Must belong to a SendGrid-authenticated domain (DKIM/SPF). Default `gomoku@email.gomoku.games`. |
+| `EMAIL_FROM_NAME` | Friendly display name on the `From:` header. Default `Gomoku Support`. |
+
+> **Note on SendGrid auth.** SendGrid's v3 API authenticates with a single API *key* (Bearer token). There is no separate API *ID* — the key alone identifies your account. Store `SENDGRID_API_KEY` in Cloud Run as a Secret Manager-backed env var, never in a committed `.env` file.
+
+### Optional (have safe defaults)
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ENVIRONMENT` | `development` | `development`, `test`, `ci`, or `production` — selects which `.env.{stage}` file Pydantic loads |
-| `DATABASE_URL` | from `.env.{stage}` | PostgreSQL DSN |
-| `GOMOKU_HTTPD_URL` | `http://localhost:10000` | Upstream game engine (envoy frontend) |
-| `JWT_SECRET` | from `.env.{stage}` | HMAC signing key |
-| `CORS_ORIGINS` | `["*"]` | Allowed origins (JSON array) |
-| `EMAIL_PROVIDER` | `stdout` | `stdout` or `sendgrid` |
-| `HONEYCOMB_API_KEY` | *(none)* | Honeycomb ingest key — enables OTel tracing when set |
-| `OTEL_SERVICE_NAME` | `gomoku-api` | Service name in Honeycomb traces |
-
-In production, all of these come from Cloud Run env vars set by Terraform (no `.env` file is read). See the [Application Configuration](#application-configuration) section below for the full reference.
+| `JWT_ALGORITHM` | `HS256` | JWT signing algorithm. |
+| `JWT_EXPIRE_MINUTES` | `10080` (1 week) | Token lifetime. |
+| `CORS_ORIGINS` | `["*"]` | JSON array of allowed origins. Tighten in production. |
+| `HONEYCOMB_API_KEY` | *(none)* | Honeycomb ingest key — enables OTel tracing when set. No-op when unset. |
+| `OTEL_SERVICE_NAME` | `gomoku-api` | Service name attached to every span. |
+| `CUSTOM_DOMAIN` | *(none)* | Override `PUBLIC_DOMAIN` (e.g. local dev hosts pointed at `dev.gomoku.games` via `/etc/hosts`). |
 
 ## Project Structure
 
@@ -550,9 +646,10 @@ The FastAPI server (`api/`) is configured via environment variables. Locally, de
 
 | Variable | Default | Description |
 |---|---|---|
-| `EMAIL_PROVIDER` | `stdout` | `stdout` or `sendgrid`. |
-| `EMAIL_FROM` | `noreply@gomoku.games` | Sender address. |
-| `SENDGRID_API_KEY` | *(none)* | Required when `EMAIL_PROVIDER=sendgrid`. |
+| `EMAIL_PROVIDER` | `stdout` | `stdout` (logs the reset link — dev only) or `sendgrid` (posts to SendGrid v3). |
+| `EMAIL_FROM` | `gomoku@email.gomoku.games` | Sender address. Must belong to a SendGrid-authenticated domain (DKIM/SPF). |
+| `EMAIL_FROM_NAME` | `Gomoku Support` | Friendly display name shown alongside `EMAIL_FROM` in the `From:` and `Reply-To:` headers. |
+| `SENDGRID_API_KEY` | *(none)* | SendGrid Web API v3 bearer token. Required when `EMAIL_PROVIDER=sendgrid` — the service raises `RuntimeError` at send time if missing. |
 
 ### Telemetry
 

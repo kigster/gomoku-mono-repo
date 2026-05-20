@@ -63,7 +63,7 @@ htmlcov/
 # ─── Node/Frontend ────────────────────────────────────────────────────────────
 node_modules/
 **/.vite
-
+.worktrees/
 # ─── Claude Code (auto-installed plugin artifacts) ────────────────────────────
 .claude/plugins/cache/
 .claude/plugins/marketplaces/
