@@ -73,7 +73,7 @@ check-frontend:
 format-shell:
     #!/usr/bin/env bash
     set -uo pipefail
-    {{find}} . \( -type d \( -name '.git' -o -name '.venv' -o -name '.worktrees' \) -prune \) \
+    {{find}} . \( -type d \( -name '.git' -o -name '.venv' -o -name '.worktrees' -o -name '.claude' -o -name 'tmp' -o -name 'node_modules' -o -name 'target' -o -name 'dist' -o -name 'build' -o -name 'googletest' -o -name 'vendor' \) -prune \) \
        -o \( -type f -print0 \) \
     | while IFS= read -r -d '' f; do
       IFS= read -r line < "$f" 2>/dev/null || continue
@@ -86,7 +86,7 @@ format-shell:
 check-shell:
     #!/usr/bin/env bash
     set -uo pipefail
-    {{find}} . \( -type d \( -name '.git' -o -name '.venv' -o -name '.worktrees' \) -prune \) \
+    {{find}} . \( -type d \( -name '.git' -o -name '.venv' -o -name '.worktrees' -o -name '.claude' -o -name 'tmp' -o -name 'node_modules' -o -name 'target' -o -name 'dist' -o -name 'build' -o -name 'googletest' -o -name 'vendor' \) -prune \) \
        -o \( -type f -print0 \) \
     | while IFS= read -r -d '' f; do
       IFS= read -r line < "$f" 2>/dev/null || continue
@@ -100,11 +100,11 @@ check-shell:
 
 # Format every Markdown file with prettier (respects .gitignore)
 format-markdown:
-    prettier --write '**/*.md' --ignore-path .gitignore
+    prettier --write '**/*.md' --ignore-path .gitignore --ignore-path .prettierignore
 
 # Verify Markdown formatting (prettier --check)
 check-markdown:
-    prettier --check '**/*.md' --ignore-path .gitignore
+    prettier --check '**/*.md' --ignore-path .gitignore --ignore-path .prettierignore
 
 # ─── Joiners ───────────────────────────────────────────────────────────────────
 

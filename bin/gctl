@@ -828,7 +828,7 @@ cmd_start() {
     gomoku.start "$workers"
     api.start
     frontend.start
-    open "http://127.0.0.1:9901" 2>/dev/null || true
+    # open "http://127.0.0.1:9901" 2>/dev/null || true
   else
     for c in "${components[@]}"; do
       component.dispatch start "$c" "$workers"

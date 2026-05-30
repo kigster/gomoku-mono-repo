@@ -1,0 +1,9 @@
+# User-local Claude configuration — not project content.
+.claude/
+
+# External / non-monorepo trees that happen to live under this checkout.
+tmp/
+
+# Vendored sub-repo docs (formatted by their own repo's CI).
+gomoku-httpd-rust/doc/
+gomoku-httpd-rust/README.md
