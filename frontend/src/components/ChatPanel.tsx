@@ -490,7 +490,7 @@ export default function ChatPanel ({
   async function dispatchSlash (
     action: SlashAction,
     target: string,
-    message: string | undefined,
+    _message: string | undefined,
     // Optional id of the user's just-echoed local message ("/invite
     // @target ..."). For /invite, we patch this row to include the
     // server-issued code once the request returns, so the user has
