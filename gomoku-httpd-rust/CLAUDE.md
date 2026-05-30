@@ -94,4 +94,4 @@ Brewfile        Optional toolchain dependencies (just, lefthook, etc.)
 - `cargo clippy --all-targets -- -D warnings` is clean. CI enforces it.
 - No `unsafe` outside `main.rs`'s pre-`env_logger`-init env var write
   (which is documented as safe at startup).
-- Comments explain *why*, not *what*. Prefer self-explanatory names.
+- Comments explain _why_, not _what_. Prefer self-explanatory names.

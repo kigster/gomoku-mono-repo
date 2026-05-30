@@ -26,11 +26,11 @@ Cloud Run handles TLS and issues certificates automatically for both the default
 ## Database Setup
 
 1. Create a Neon project and database named `gomoku`
-2. Run the schema migration:
+1. Run the schema migration:
    ```bash
    psql "$NEON_DATABASE_URL" -f iac/cloud_sql/setup.sql
    ```
-3. Keep the connection string — you'll export it as `TF_VAR_database_url`
+1. Keep the connection string — you'll export it as `TF_VAR_database_url`
 
 ## First-Time Deploy
 
@@ -55,10 +55,11 @@ just cr-init
 ```
 
 The deploy script:
+
 1. Initializes Terraform and enables Cloud Run + Artifact Registry APIs
-2. Creates an Artifact Registry repository (`gomoku-repo`)
-3. Builds both Docker images for `linux/amd64` and pushes them
-4. Applies the full Terraform plan (two Cloud Run services + IAM)
+1. Creates an Artifact Registry repository (`gomoku-repo`)
+1. Builds both Docker images for `linux/amd64` and pushes them
+1. Applies the full Terraform plan (two Cloud Run services + IAM)
 
 ## Updating Services
 
@@ -100,7 +101,7 @@ Cloud Run provisions and auto-renews the TLS certificate. No certbot, no manual 
 All configuration is passed to the `gomoku-api` container via Terraform:
 
 | Variable | Source | Purpose |
-|---|---|---|
+| ------------------ | ---------------------------------- | --------------------------------- |
 | `DATABASE_URL` | `TF_VAR_database_url` | Neon PostgreSQL connection string |
 | `GOMOKU_HTTPD_URL` | Terraform (from httpd service URL) | Internal URL to game engine |
 | `JWT_SECRET` | `TF_VAR_jwt_secret` | HMAC signing key for auth tokens |
@@ -121,7 +122,7 @@ Then update the `backend "gcs"` block in `main.tf` to match your bucket name.
 ## Scaling
 
 | Setting | gomoku-api | gomoku-httpd |
-|---|---|---|
+| ------------- | ---------- | ------------ |
 | Min instances | 0 | 0 |
 | Max instances | 5 | 20 |
 | Concurrency | 80 | 1 |
@@ -140,7 +141,7 @@ gcloud run services update gomoku-httpd --region=us-central1 --min-instances=1  
 Cloud Run scales to zero when idle. With the Neon free tier, total cost for low traffic is **$0/month**.
 
 | Resource | Free Tier |
-|---|---|
+| ----------------- | ----------------------------------- |
 | Cloud Run | 2M requests/mo, 360K vCPU-sec |
 | Artifact Registry | 500MB storage |
 | Neon PostgreSQL | 0.5GB storage, 190 compute hours/mo |

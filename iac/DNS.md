@@ -11,7 +11,7 @@ types, and Cloud Run serves them via different infrastructure.
 ## TL;DR
 
 | Environment | Domain | DNS provider | Records | Source |
-|---|---|---|---|---|
+| ----------- | ---------------------- | ------------ | -------------------------------------------------- | ---------------------------------------------- |
 | Production | `gomoku.us` | DNSMadeEasy | 4 × `A` (IPv4 ghs) + 4 × `AAAA` (IPv6 ghs) at apex | [§1](#1-production--gomokuus-apex) |
 | Staging | `staging.gomoku.games` | DNSMadeEasy | 1 × `CNAME` → `ghs.googlehosted.com.` | [§2](#2-staging--staginggomokugames-subdomain) |
 | Local dev | `dev.gomoku.games` | `/etc/hosts` | `127.0.0.1 dev.gomoku.games` | [§3](#3-local-dev--devgomokugames) |
@@ -23,7 +23,7 @@ publishes today; if Terraform's output disagrees, follow Terraform.
 ## Why two record types?
 
 `google_cloud_run_domain_mapping` (the resource we use) provisions
-TLS automatically as long as you point DNS at Google. The DNS *target*
+TLS automatically as long as you point DNS at Google. The DNS _target_
 depends on whether the hostname is an apex or a subdomain:
 
 - **Subdomain** (`staging.gomoku.games`) — a `CNAME` to
@@ -36,7 +36,7 @@ depends on whether the hostname is an apex or a subdomain:
 Both forms still trigger Google's automatic Let's Encrypt TLS issuance
 once the records propagate.
 
----
+______________________________________________________________________
 
 ## 1. Production — `gomoku.us` (apex)
 
@@ -52,9 +52,9 @@ IPs without manual updates.
 
 1. Log in at <https://cp.dnsmadeeasy.com/> and open the `gomoku.us`
    managed zone.
-2. **Delete** any existing apex `A` / `AAAA` / `CNAME` records that
+1. **Delete** any existing apex `A` / `AAAA` / `CNAME` records that
    currently point at the old host.
-3. Add a single `ANAME` at the apex:
+1. Add a single `ANAME` at the apex:
    - **Name**: (blank or `@`)
    - **Type**: `ANAME`
    - **Value**: `ghs.googlehosted.com.` (note the trailing dot)
@@ -156,19 +156,19 @@ nowhere unless you also configure an apex redirect (manually, via
 DNSMadeEasy's HTTP redirect feature, or via a tiny redirect Cloud Run
 service).
 
----
+______________________________________________________________________
 
 ## 2. Staging — `staging.gomoku.games` (subdomain)
 
 ### Step-by-step in DNSMadeEasy
 
 1. Open the `gomoku.games` managed zone.
-2. Add a `CNAME` record:
+1. Add a `CNAME` record:
    - **Name**: `staging`
    - **Type**: `CNAME`
    - **Value**: `ghs.googlehosted.com.` (note the trailing dot)
    - **TTL**: `1800`
-3. Run `just deploy staging`. Wait 15–60 minutes for TLS provisioning.
+1. Run `just deploy staging`. Wait 15–60 minutes for TLS provisioning.
 
 ### Verifying
 
@@ -180,7 +180,7 @@ curl -sI https://staging.gomoku.games | head -5
 # Expect: HTTP/2 200, Server: Google Frontend
 ```
 
----
+______________________________________________________________________
 
 ## 3. Local dev — `dev.gomoku.games`
 
@@ -199,7 +199,7 @@ Then `bin/gctl start` and visit <https://dev.gomoku.games>. nginx
 serves the locally-trusted certificate that `bin/gctl setup`
 provisions via mkcert.
 
----
+______________________________________________________________________
 
 ## Per-environment Terraform output
 

@@ -50,7 +50,7 @@ on each other.
 - **Failure mode:** if the contract isn't pinned down, workers diverge and the
   integration step costs more than the parallelism saved. Token cost is N×
   the single-agent baseline — you're trading money for wall-clock.
-- **Hard rule:** write the contract (types, endpoint shape, schema) *before*
+- **Hard rule:** write the contract (types, endpoint shape, schema) _before_
   fanning out. The contract is the synchronisation primitive.
 
 ### 3. Independent review / second opinion
@@ -89,8 +89,8 @@ human-initiated.
 ### What's mostly theatre
 
 - **"Council of agents debating"** — N copies of the same model arguing rarely
-  beats one good agent with a clear brief. Independence requires *different
-  context*, not different invocations.
+  beats one good agent with a clear brief. Independence requires _different
+  context_, not different invocations.
 - **"AI pair programmer watching every keystroke"** — most of the value is in
   the review at task boundaries, not continuous narration.
 - **Deep agent trees (agent → agent → agent → ...)** — context loss compounds.
@@ -208,7 +208,7 @@ filter prompt. The filter is the whole product.
 
 ______________________________________________________________________
 
-## Phase 3 — Things to explicitly *not* build
+## Phase 3 — Things to explicitly _not_ build
 
 Listed because they're tempting and they don't pay off:
 
@@ -218,8 +218,8 @@ Listed because they're tempting and they don't pay off:
   simpler, cheaper, and easier to debug.
 - **Self-modifying agent prompts** — the determinism loss is not worth the
   marginal gain. Edit the prompt files in git like any other code.
-- **Replacing code review with agent review** — agent review is *additional*,
-  not *substitute*. The signal is different.
+- **Replacing code review with agent review** — agent review is _additional_,
+  not _substitute_. The signal is different.
 
 ______________________________________________________________________
 

@@ -1,4 +1,4 @@
----
+______________________________________________________________________
 
 description: "Create a pull request from current branch or staged changes"
 allowed-tools:
@@ -8,20 +8,21 @@ allowed-tools:
 - Bash(git \*)
 - Bash(gh \*)
 
----
+______________________________________________________________________
 
 # Create Pull Request
 
 This command:
-* optionally creates a branch if we are on main/master branch
-* runs git add . — all files should be staged for commit.
-* ensures we have latest dependencies (i.e `just install` or `just sync`) or for Ruby apps, check file `.ruby-version` and if check if `rbenv versions` shows this version, and if not instructions for installing a Ruby process are very simple: run `~/.bashmatic/bin/ruby-install $(cat .ruby-version)`
-* then this command validates that all the checks and linters are passing. It generally executes this repo's overall check. Sometimes it's `just check-all`, sometimes `just ci`, and sometimes it's `just test`. Or, for ruby application, `bundle exec rspec --format documentation`. 
-* after that it 
+
+- optionally creates a branch if we are on main/master branch
+- runs git add . — all files should be staged for commit.
+- ensures we have latest dependencies (i.e `just install` or `just sync`) or for Ruby apps, check file `.ruby-version` and if check if `rbenv versions` shows this version, and if not instructions for installing a Ruby process are very simple: run `~/.bashmatic/bin/ruby-install $(cat .ruby-version)`
+- then this command validates that all the checks and linters are passing. It generally executes this repo's overall check. Sometimes it's `just check-all`, sometimes `just ci`, and sometimes it's `just test`. Or, for ruby application, `bundle exec rspec --format documentation`.
+- after that it
   - checks the `git diff --cached` for the staged files and figure out what this commit is about
   - figure out if all staged files belong to the same logical PR or it should be multiple
   - for each it creates a new branch and performs a commit, by providing a proper PR title and PR body that's detailed and concise.
-  - pushes this PR to the origin updating its title and body using `gh pr`  tool.
+  - pushes this PR to the origin updating its title and body using `gh pr` tool.
 
 ## Details
 
@@ -71,7 +72,7 @@ After that you will be in the situation described by the section "2. There are S
 
 ### Committing Changes and Creating the PR
 
-Once we are on the branch, and either there are only changes staged for commit or NO changes at all (so we'll be creating the PR from the branch). 
+Once we are on the branch, and either there are only changes staged for commit or NO changes at all (so we'll be creating the PR from the branch).
 
 DO NOT REBASE FROM MAIN.
 

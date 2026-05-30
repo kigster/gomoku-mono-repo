@@ -63,7 +63,7 @@ Both stacks register a Cloud Run domain mapping. After the first
 `just deploy <env>`, add the records to your DNS registrar:
 
 | Environment | Domain | Records |
-|---|---|---|
+| ----------- | ---------------------- | ------------------------------------ |
 | production | `gomoku.us` (apex) | 4× `A` + 4× `AAAA` (Google ghs IPs) |
 | staging | `staging.gomoku.games` | 1× `CNAME` → `ghs.googlehosted.com.` |
 
@@ -91,7 +91,7 @@ Views: `leaderboard` (best per player), `top_scores` (global top 100).
 ### FastAPI (`gomoku-api`)
 
 | Variable | Source | Purpose |
-|---|---|---|
+| ------------------ | ---------------------------------- | --------------------------------- |
 | `DATABASE_URL` | `TF_VAR_database_url` | Neon PostgreSQL connection string |
 | `GOMOKU_HTTPD_URL` | Terraform (from httpd service URL) | Internal URL to game engine |
 | `JWT_SECRET` | `TF_VAR_jwt_secret` | JWT signing key |

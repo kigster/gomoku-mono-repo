@@ -1,7 +1,6 @@
----
-name: mermaid-diagrams
-description: Comprehensive guide for creating software diagrams using Mermaid syntax. Use when users need to create, visualize, or document software through diagrams including class diagrams (domain modeling, object-oriented design), sequence diagrams (application flows, API interactions, code execution), flowcharts (processes, algorithms, user journeys), entity relationship diagrams (database schemas), C4 architecture diagrams (system context, containers, components), state diagrams, git graphs, pie charts, gantt charts, or any other diagram type. Triggers include requests to "diagram", "visualize", "model", "map out", "show the flow", or when explaining system architecture, database design, code structure, or user/application flows.
----
+______________________________________________________________________
+
+## name: mermaid-diagrams description: Comprehensive guide for creating software diagrams using Mermaid syntax. Use when users need to create, visualize, or document software through diagrams including class diagrams (domain modeling, object-oriented design), sequence diagrams (application flows, API interactions, code execution), flowcharts (processes, algorithms, user journeys), entity relationship diagrams (database schemas), C4 architecture diagrams (system context, containers, components), state diagrams, git graphs, pie charts, gantt charts, or any other diagram type. Triggers include requests to "diagram", "visualize", "model", "map out", "show the flow", or when explaining system architecture, database design, code structure, or user/application flows.
 
 # Mermaid Diagramming
 
@@ -17,6 +16,7 @@ diagramType
 ```
 
 **Key principles:**
+
 - First line declares diagram type (e.g., `classDiagram`, `sequenceDiagram`, `flowchart`)
 - Use `%%` for comments
 - Line breaks and indentation improve readability but aren't required
@@ -27,41 +27,50 @@ diagramType
 **Choose the right diagram type:**
 
 1. **Class Diagrams** - Domain modeling, OOP design, entity relationships
+
    - Domain-driven design documentation
    - Object-oriented class structures
    - Entity relationships and dependencies
 
-2. **Sequence Diagrams** - Temporal interactions, message flows
+1. **Sequence Diagrams** - Temporal interactions, message flows
+
    - API request/response flows
    - User authentication flows
    - System component interactions
    - Method call sequences
 
-3. **Flowcharts** - Processes, algorithms, decision trees
+1. **Flowcharts** - Processes, algorithms, decision trees
+
    - User journeys and workflows
    - Business processes
    - Algorithm logic
    - Deployment pipelines
 
-4. **Entity Relationship Diagrams (ERD)** - Database schemas
+1. **Entity Relationship Diagrams (ERD)** - Database schemas
+
    - Table relationships
    - Data modeling
    - Schema design
 
-5. **C4 Diagrams** - Software architecture at multiple levels
+1. **C4 Diagrams** - Software architecture at multiple levels
+
    - System Context (systems and users)
    - Container (applications, databases, services)
    - Component (internal structure)
    - Code (class/interface level)
 
-6. **State Diagrams** - State machines, lifecycle states
-7. **Git Graphs** - Version control branching strategies
-8. **Gantt Charts** - Project timelines, scheduling
-9. **Pie/Bar Charts** - Data visualization
+1. **State Diagrams** - State machines, lifecycle states
+
+1. **Git Graphs** - Version control branching strategies
+
+1. **Gantt Charts** - Project timelines, scheduling
+
+1. **Pie/Bar Charts** - Data visualization
 
 ## Quick Start Examples
 
 ### Class Diagram (Domain Model)
+
 ```mermaid
 classDiagram
     Title -- Genre
@@ -82,6 +91,7 @@ classDiagram
 ```
 
 ### Sequence Diagram (API Flow)
+
 ```mermaid
 sequenceDiagram
     participant User
@@ -99,6 +109,7 @@ sequenceDiagram
 ```
 
 ### Flowchart (User Journey)
+
 ```mermaid
 flowchart TD
     Start([User visits site]) --> Auth{Authenticated?}
@@ -112,6 +123,7 @@ flowchart TD
 ```
 
 ### ERD (Database Schema)
+
 ```mermaid
 erDiagram
     USER ||--o{ ORDER : places
@@ -148,12 +160,12 @@ For in-depth guidance on specific diagram types, see:
 ## Best Practices
 
 1. **Start Simple** - Begin with core entities/components, add details incrementally
-2. **Use Meaningful Names** - Clear labels make diagrams self-documenting
-3. **Comment Extensively** - Use `%%` comments to explain complex relationships
-4. **Keep Focused** - One diagram per concept; split large diagrams into multiple focused views
-5. **Version Control** - Store `.mmd` files alongside code for easy updates
-6. **Add Context** - Include titles and notes to explain diagram purpose
-7. **Iterate** - Refine diagrams as understanding evolves
+1. **Use Meaningful Names** - Clear labels make diagrams self-documenting
+1. **Comment Extensively** - Use `%%` comments to explain complex relationships
+1. **Keep Focused** - One diagram per concept; split large diagrams into multiple focused views
+1. **Version Control** - Store `.mmd` files alongside code for easy updates
+1. **Add Context** - Include titles and notes to explain diagram purpose
+1. **Iterate** - Refine diagrams as understanding evolves
 
 ## Configuration and Theming
 
@@ -173,21 +185,25 @@ flowchart LR
 **Available themes:** default, forest, dark, neutral, base
 
 **Layout options:**
+
 - `layout: dagre` (default) - Classic balanced layout
 - `layout: elk` - Advanced layout for complex diagrams (requires integration)
 
 **Look options:**
+
 - `look: classic` - Traditional Mermaid style
 - `look: handDrawn` - Sketch-like appearance
 
 ## Exporting and Rendering
 
 **Native support in:**
+
 - GitHub/GitLab - Automatically renders in Markdown
 - VS Code - With Markdown Mermaid extension
 - Notion, Obsidian, Confluence - Built-in support
 
 **Export options:**
+
 - [Mermaid Live Editor](https://mermaid.live) - Online editor with PNG/SVG export
 - Mermaid CLI - `npm install -g @mermaid-js/mermaid-cli` then `mmdc -i input.mmd -o output.png`
 - Docker - `docker run --rm -v $(pwd):/data minlag/mermaid-cli -i /data/input.mmd -o /data/output.png`
@@ -202,6 +218,7 @@ flowchart LR
 ## When to Create Diagrams
 
 **Always diagram when:**
+
 - Starting new projects or features
 - Documenting complex systems
 - Explaining architecture decisions
@@ -210,6 +227,7 @@ flowchart LR
 - Onboarding new team members
 
 **Use diagrams to:**
+
 - Align stakeholders on technical decisions
 - Document domain models collaboratively
 - Visualize data flows and system interactions

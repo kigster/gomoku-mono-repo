@@ -29,28 +29,30 @@
 #define ESCAPE_CODE_RESET "\033[0m"
 
 // Cursor colors
-#define COLOR_BG_CURSOR_OCCUPIED "\033[46m" // Cyan background for cursor on occupied cells
-#define COLOR_CURSOR "\033[1;33m"           // Yellow color for cursor symbol
+#define COLOR_BG_CURSOR_OCCUPIED                                               \
+  "\033[46m" // Cyan background for cursor on occupied cells
+#define COLOR_CURSOR "\033[1;33m" // Yellow color for cursor symbol
 
 #define COLOR_BOLD_RED "\033[1;31m"
 #define COLOR_BOLD_GREEN "\033[1;32m"
 
-#define COLOR_X_NORMAL "\033[0;31m"      // Red for X
-#define COLOR_X_LAST_MOVE "\033[1;31m"   // Bold red for X last move
+#define COLOR_X_NORMAL "\033[0;31m"    // Red for X
+#define COLOR_X_LAST_MOVE "\033[1;31m" // Bold red for X last move
 
-#define COLOR_O_NORMAL "\033[0;32m"      // Green for O
-#define COLOR_O_LAST_MOVE "\033[1;32m"   // Bold green for O last move
+#define COLOR_O_NORMAL "\033[0;32m"    // Green for O
+#define COLOR_O_LAST_MOVE "\033[1;32m" // Bold green for O last move
 
-#define COLOR_O_INVALID "\033[0m\033[5;37;41m" // Red background for invalid moves
+#define COLOR_O_INVALID                                                        \
+  "\033[0m\033[5;37;41m" // Red background for invalid moves
 #define COLOR_X_INVALID "\033[0m\033[5;37;41m"
 
 // Hint mode: bold + blink for threatening patterns
-#define COLOR_X_HINT "\033[1;5;31m"  // Bold blinking red for X threats
-#define COLOR_O_HINT "\033[1;5;32m"  // Bold blinking green for O threats
+#define COLOR_X_HINT "\033[1;5;31m" // Bold blinking red for X threats
+#define COLOR_O_HINT "\033[1;5;32m" // Bold blinking green for O threats
 
 // Victory highlight: bold + blink for the winning five
-#define COLOR_X_WIN "\033[1;5;31m"    // Bold blinking red
-#define COLOR_O_WIN "\033[1;5;32m"    // Bold blinking green
+#define COLOR_X_WIN "\033[1;5;31m" // Bold blinking red
+#define COLOR_O_WIN "\033[1;5;32m" // Bold blinking green
 
 // Cursor movement
 #define ESCAPE_RESTORE_CURSOR_POSITION "\033[u"

@@ -19,8 +19,8 @@ This seminal paper asserts that Go-Moku is a theoretical win for the first playe
 
 - **Threat Definition**: A move that forces an immediate response. Examples include:
 
-  - **Four**: A line of four stones, which threatens to become a five on the next turn. The opponent *must* block it.
-  - **Three**: A line of three stones, which threatens to become a *straight four* (an unblockable line of four) on the next turn. This also forces a response.
+  - **Four**: A line of four stones, which threatens to become a five on the next turn. The opponent _must_ block it.
+  - **Three**: A line of three stones, which threatens to become a _straight four_ (an unblockable line of four) on the next turn. This also forces a response.
   - **Double Threat**: A move that creates two or more threats simultaneously, which is usually a winning move as the opponent can only block one.
 
 - **How it Works**: The search algorithm operates in a "threat space" rather than the "game space". It builds a sequence of threats, assuming the opponent's only moves are the ones that parry the immediate threat. The goal is to find a sequence of forcing moves that inevitably leads to a double threat.

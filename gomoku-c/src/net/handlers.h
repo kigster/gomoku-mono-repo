@@ -6,7 +6,8 @@
 #ifndef NET_HANDLERS_H
 #define NET_HANDLERS_H
 
-// Forward declaration - httpserver.h is included in handlers.c with HTTPSERVER_IMPL
+// Forward declaration - httpserver.h is included in handlers.c with
+// HTTPSERVER_IMPL
 struct http_request_s;
 
 //===============================================================================
@@ -111,7 +112,8 @@ void handle_method_not_allowed(struct http_request_s *request);
  * @param request The HTTP request
  * @param error_message Error message to include in response
  */
-void handle_bad_request(struct http_request_s *request, const char *error_message);
+void handle_bad_request(struct http_request_s *request,
+                        const char *error_message);
 
 /**
  * Handle 500 Internal Server Error responses.
@@ -119,6 +121,7 @@ void handle_bad_request(struct http_request_s *request, const char *error_messag
  * @param request The HTTP request
  * @param error_message Error message to include in response
  */
-void handle_internal_error(struct http_request_s *request, const char *error_message);
+void handle_internal_error(struct http_request_s *request,
+                           const char *error_message);
 
 #endif // NET_HANDLERS_H

@@ -64,8 +64,8 @@ just demo PORT=9999 DEPTH=4 RADIUS=3 BOARD=19
 ### CLI reference
 
 | Flag | Long | Default | Purpose |
-|------|------|---------|---------|
-| `-b` | `--bind <ADDR>` | *required* | `host:port`, just `port`, or `[::]:port` |
+| ---- | ----------------------- | -------------- | ----------------------------------------------- |
+| `-b` | `--bind <ADDR>` | _required_ | `host:port`, just `port`, or `[::]:port` |
 | `-a` | `--agent-port <PORT>` | off | TCP port for HAProxy agent-check |
 | `-d` | `--daemonize` | off | Accepted for CLI parity with C; no-op in Rust |
 | `-l` | `--log-file <FILE>` | stderr | Append log records to a file |
@@ -80,7 +80,7 @@ headers and bold-yellow examples.
 ### HTTP endpoints
 
 | Method + path | Purpose |
-|---------------|---------|
+| ------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `GET /health` | Liveness check. Always 200 if the process is up. |
 | `GET /ready` | Returns 200 `{"status":"ready"}` while a worker slot is free, 503 `{"status":"busy"}` once every slot is taken. |
 | `POST /gomoku/play` | Submit a full game state, receive the next AI move. |
@@ -117,7 +117,7 @@ curl -s -X POST http://127.0.0.1:9931/gomoku/play \
 Inputs:
 
 | Field | Type | Required | Notes |
-|-------|------|----------|-------|
+| -------------------- | --------------- | -------- | ------------------------------------------------------------------------------------- |
 | `X` | object | yes | `{"player": "human"\|"AI", "depth": 1..6}` |
 | `O` | object | yes | same as `X` |
 | `board_size` | int | no | 15 or 19 (default 19) |
@@ -288,12 +288,12 @@ gates locally.
 
 The PDFs in `doc/` cover the algorithmic foundations:
 
-- Allis, van den Herik, Huntjens (1994), *Go-Moku and Threat-Space Search.*
+- Allis, van den Herik, Huntjens (1994), _Go-Moku and Threat-Space Search._
   The threat-space terminology used throughout this codebase (open three,
   straight four, …) traces back to this paper.
-- Stanford CS poster (2000), *AI Agent for Playing Gomoku.* Inspires the
+- Stanford CS poster (2000), _AI Agent for Playing Gomoku._ Inspires the
   beam-search style ordering inside `generate_moves`.
-- Wágner, Virág (2001), *Solving Renju.* Background reading for the iterative
+- Wágner, Virág (2001), _Solving Renju._ Background reading for the iterative
   deepening / threat-sequence search behind `ai::find_forced_win`.
 
 ### Project journey

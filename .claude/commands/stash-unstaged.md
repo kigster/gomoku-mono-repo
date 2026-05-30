@@ -1,11 +1,11 @@
----
+______________________________________________________________________
 
 description: "Stash unstaged/untracked files while preserving staged changes"
 allowed-tools:
 
 - Bash(git \*)
 
----
+______________________________________________________________________
 
 # Stash Unstaged Changes
 

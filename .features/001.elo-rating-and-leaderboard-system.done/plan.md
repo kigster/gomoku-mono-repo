@@ -3,7 +3,7 @@
 ## Why now
 
 The current scoring (`game_score(human_won, depth, radius, time)` → 0..7250) is a
-deterministic function of the *parameters of one game*. It rewards beating the
+deterministic function of the _parameters of one game_. It rewards beating the
 AI at high depth with low time-to-win, but it has no notion of trajectory: a
 player who beats depth=4 once and never plays again has the same "max_score"
 forever. Elo gives a moving rating that converges to the player's true
@@ -45,7 +45,7 @@ Initial table (calibrate from the depth-tournament eval data already in
 `gomoku-c/tests/evals/`):
 
 | depth | radius=2 | radius=3 | radius=4 |
-|------:|---------:|---------:|---------:|
+| ----: | -------: | -------: | -------: |
 | 2 | 900 | 1000 | 1100 |
 | 3 | 1200 | 1300 | 1400 |
 | 4 | 1500 | 1600 | 1700 |
@@ -190,7 +190,7 @@ async def _refresh_top_100(pool):
 ```
 
 **Why both `old_elo` and `new_elo`**: a player already in top 100 whose rating
-*drops* still affects the ordering — must refresh.
+_drops_ still affects the ordering — must refresh.
 
 **Race conditions**: two concurrent saves can both decide a refresh is needed
 and both fire `REFRESH CONCURRENTLY`. Postgres serialises them on the view's
@@ -228,11 +228,11 @@ EXECUTE FUNCTION notify_top_100_dirty();
 
 Lifespan task in FastAPI: dedicated connection (NOT through pool), `LISTEN top_100_dirty`, debounce 5s, refresh.
 
-**Why this is the *non*-recommended option**: Neon's pooled endpoint is in
+**Why this is the _non_-recommended option**: Neon's pooled endpoint is in
 transaction mode and **does not support LISTEN/NOTIFY** reliably — the
 notification is tied to the backend connection, but the pooler may swap
 backends between transactions. To use this option you'd need a second
-connection through Neon's *direct* (unpooled) endpoint, plus the app keeps a
+connection through Neon's _direct_ (unpooled) endpoint, plus the app keeps a
 long-lived connection always open, which fights Cloud Run's scale-to-zero.
 
 Use Option B only if you migrate off Neon to Cloud SQL and have a long-lived
@@ -321,11 +321,11 @@ That's a small correctness win.
 
 ```tsx
 interface LeaderboardEntry {
-  rank: number
-  username: string
-  elo_rating: number
-  peak_elo: number
-  games_played: number
+  rank: number;
+  username: string;
+  elo_rating: number;
+  peak_elo: number;
+  games_played: number;
 }
 
 // Columns:  #  Player  Rating  Peak  Games
@@ -346,17 +346,19 @@ Until enough players have ≥ 5 Elo-rated games, `top_100_elo` will be sparse
 or empty. The modal already has a "No scores yet" empty state — extend it:
 
 ```tsx
-{!loading && !error && entries.length === 0 && (
-  <div className='py-8 text-center text-neutral-400'>
-    <p>The Elo leaderboard is just getting started.</p>
-    <p className='mt-2 text-xs'>
-      Players need {MIN_GAMES_FOR_RANKING} rated games to appear here.
-      <button onClick={() => setView('best-games')}>
-        See all-time best games instead
-      </button>
-    </p>
-  </div>
-)}
+{
+  !loading && !error && entries.length === 0 && (
+    <div className="py-8 text-center text-neutral-400">
+      <p>The Elo leaderboard is just getting started.</p>
+      <p className="mt-2 text-xs">
+        Players need {MIN_GAMES_FOR_RANKING} rated games to appear here.
+        <button onClick={() => setView("best-games")}>
+          See all-time best games instead
+        </button>
+      </p>
+    </div>
+  );
+}
 ```
 
 ### Cache headers
@@ -423,7 +425,7 @@ ______________________________________________________________________
 ## Files touched (estimated diff size)
 
 | File | Phase | Lines |
-|------|:-----:|------:|
+| ------------------------------------------------------------- | :---: | -------------: |
 | `api/db/migrations/versions/0006-add-elo.py` (new) | 1 | ~50 |
 | `api/app/elo.py` (new) | 1 | ~80 |
 | `api/app/routers/game.py` | 1 | +~30 |
@@ -438,7 +440,7 @@ ______________________________________________________________________
 | **Total** | | **~450 lines** |
 
 | Phase | Lines | Backend / Frontend / DB |
-|------:|------:|:------------------------|
+| ----: | ----: | :-------------------------------------- |
 | 1 | ~240 | python + SQL migration |
 | 2 | ~30 | SQL migration only |
 | 3 | ~30 | python only |

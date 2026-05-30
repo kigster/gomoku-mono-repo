@@ -53,7 +53,7 @@ graph TB
 ### Components
 
 | Component | Default Port(s) | Description |
-|---|---|---|
+| ---------------- | ------------------------------ | ---------------------------------------------------- |
 | **nginx** | 80, 443 | TLS termination (mkcert), routing to API and Vite |
 | **envoy** | 10000 (frontend), 9901 (admin) | Least-request LB across gomoku-httpd workers |
 | **gomoku-httpd** | 9500+ | Worker pool (one process per port, one per CPU core) |
@@ -112,7 +112,7 @@ gctl observe htop           # Or htop, ctop, btm
 ### Log Files
 
 | File | Component |
-|---|---|
+| ------------------------------ | --------------- |
 | `/var/log/nginx/access.log` | nginx access |
 | `/var/log/nginx/error.log` | nginx errors |
 | `/var/log/envoy.log` | Envoy proxy |
@@ -212,7 +212,7 @@ $EDITOR .env
 ```
 
 | Key | What goes there |
-|---|---|
+| -------------------------- | ---------------------------------------------------------------------------- |
 | `PRODUCTION_DATABASE_URL` | Pooled Neon DSN from above |
 | `PRODUCTION_JWT_SECRET` | Generate with `just jwt-secret` |
 | `HONEYCOMB_INGEST_API_KEY` | "Ingest" key from Honeycomb → Environment Settings → API Keys |
@@ -266,7 +266,7 @@ For the apex domain, add the A/AAAA records Google provides. For a subdomain (e.
 ### Scaling
 
 | Setting | gomoku-api | gomoku-httpd |
-|---|---|---|
+| ------------- | ---------- | ------------ |
 | Min instances | 0 | 0 |
 | Max instances | 5 | 20 |
 | Concurrency | 80 | 1 |
@@ -283,7 +283,7 @@ gcloud run services update gomoku-httpd --region=us-central1 --min-instances=1
 ### Cost
 
 | Resource | Free Tier |
-|---|---|
+| ----------------- | ----------------------------------- |
 | Cloud Run | 2M requests/mo, 360K vCPU-sec |
 | Artifact Registry | 500MB storage |
 | Neon PostgreSQL | 0.5GB storage, 190 compute hours/mo |
@@ -345,7 +345,7 @@ ______________________________________________________________________
 ## 3. Troubleshooting
 
 | Problem | Fix |
-|---|---|
+| ---------------------------- | ------------------------------------------------------------------------------- |
 | 405 on POST | Ensure `VITE_API_BASE` is empty in frontend `.env` for production (same-origin) |
 | CPU < 1 with concurrency > 1 | Cloud Run requires CPU >= 1000m when concurrency > 1 |
 | Memory < 512Mi | CPU always-allocated requires memory >= 512Mi |

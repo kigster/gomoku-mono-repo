@@ -445,9 +445,7 @@ async def decline_invite(
 # tab closes between calls, the user's intent stays in the chat log.
 
 
-async def _participant_chat(
-    conn: asyncpg.Connection, code: str, user_id: str
-) -> dict:
+async def _participant_chat(conn: asyncpg.Connection, code: str, user_id: str) -> dict:
     """Resolve the chat for `code` and verify that `user_id` is a
     participant of the underlying multiplayer game.
 
@@ -562,5 +560,3 @@ async def list_chat_messages(
             for r in rows
         ]
     )
-
-

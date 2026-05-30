@@ -8,10 +8,10 @@
 #ifndef UI_H
 #define UI_H
 
-#include <termios.h>
-#include "gomoku.h"
-#include "game.h"
 #include "ansi.h"
+#include "game.h"
+#include "gomoku.h"
+#include <termios.h>
 
 //===============================================================================
 // INPUT HANDLING
@@ -34,14 +34,14 @@ void disable_raw_mode(void);
 
 /**
  * Gets a single keypress from the user.
- * 
+ *
  * @return Key code or -1 on error
  */
 int get_key(void);
 
 /**
  * Handles user input and updates game state accordingly.
- * 
+ *
  * @param game The game state
  */
 void handle_input(game_state_t *game);
@@ -62,14 +62,14 @@ void draw_game_header(void);
 
 /**
  * Draws the game board with current stone positions and cursor.
- * 
+ *
  * @param game The game state
  */
 void draw_board(game_state_t *game);
 
 /**
  * Draws the game history sidebar.
- * 
+ *
  * @param game The game state
  * @param start_row Starting row position for the sidebar
  */
@@ -77,7 +77,7 @@ void draw_game_history_sidebar(game_state_t *game, int start_row);
 
 /**
  * Draws the status panel with game information and controls.
- * 
+ *
  * @param game The game state
  */
 void draw_status(game_state_t *game);
@@ -102,4 +102,4 @@ void refresh_display(game_state_t *game);
  */
 void position_cursor_near_last_move(game_state_t *game);
 
-#endif // UI_H 
+#endif // UI_H

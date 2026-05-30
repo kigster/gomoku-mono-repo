@@ -639,8 +639,8 @@ make -C gomoku-c test
 <br />
 
 | | |
-|----------|----------|
+| ------------------ | --------------------------------------------------------------- |
 | **Project Status** | Production Ready |
 | **License** | MIT |
 | **Repository**: | <https://github.com/kigster/gomoku-ansi-c> |
-| **Author** | © 2010-2026 [Konstantin Gredeskoul](https://github.com/kigster)
+| **Author** | © 2010-2026 [Konstantin Gredeskoul](https://github.com/kigster) |

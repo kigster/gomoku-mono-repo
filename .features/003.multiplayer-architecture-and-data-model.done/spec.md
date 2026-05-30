@@ -21,7 +21,7 @@ version.
 ## Up-front decisions
 
 | Question | Decision | Why |
-|---|---|---|
+| -------------- | ------------------------------------------- | --------------------------------------------------------- |
 | Matchmaking | Invite-link only (`/play/CODE`) | Simplest UX, no lobby UI, no queue. |
 | Auth | Both players authenticated | Lets Elo hook in cleanly later. |
 | Transport | Short polling, 1.5 s interval | No new infra; turn-based latency is fine. |

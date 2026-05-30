@@ -34,17 +34,13 @@ async def test_user_me_invalid_token(client: AsyncClient):
 async def _read_last_seen(username: str):
     conn = await asyncpg.connect(TEST_DSN)
     try:
-        return await conn.fetchval(
-            "SELECT last_seen_at FROM users WHERE username = $1", username
-        )
+        return await conn.fetchval("SELECT last_seen_at FROM users WHERE username = $1", username)
     finally:
         await conn.close()
 
 
 @pytest.mark.asyncio
-async def test_seen_advances_last_seen_when_incoming_is_newer(
-    client: AsyncClient, auth_headers
-):
+async def test_seen_advances_last_seen_when_incoming_is_newer(client: AsyncClient, auth_headers):
     """Posting a fresh timestamp moves users.last_seen_at forward."""
     fresh = datetime.now(UTC) + timedelta(seconds=5)
     resp = await client.post(
@@ -54,18 +50,16 @@ async def test_seen_advances_last_seen_when_incoming_is_newer(
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert datetime.fromisoformat(body["last_seen_at"]).replace(
+    assert datetime.fromisoformat(body["last_seen_at"]).replace(microsecond=0) == fresh.replace(
         microsecond=0
-    ) == fresh.replace(microsecond=0)
+    )
     stored = await _read_last_seen("testplayer")
     assert stored is not None
     assert stored.replace(microsecond=0) == fresh.replace(microsecond=0)
 
 
 @pytest.mark.asyncio
-async def test_seen_is_no_op_when_incoming_is_stale(
-    client: AsyncClient, auth_headers
-):
+async def test_seen_is_no_op_when_incoming_is_stale(client: AsyncClient, auth_headers):
     """A timestamp older than the stored value is silently rejected
     (the stored value remains, and the response echoes it back)."""
     # Park last_seen_at near "now" so any reasonable backdate is older.
@@ -106,9 +100,7 @@ async def test_seen_requires_authentication(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_current_user_does_not_bump_last_seen(
-    client: AsyncClient, auth_headers
-):
+async def test_get_current_user_does_not_bump_last_seen(client: AsyncClient, auth_headers):
     """The auth dependency is read-only now — calling an authed endpoint
     no longer advances users.last_seen_at on its own. Backdate it and
     verify a /user/me call leaves it alone."""

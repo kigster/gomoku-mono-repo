@@ -17,7 +17,7 @@ make -C gomoku-c all install   # equivalent
 This produces three binaries under `bin/`:
 
 | Binary | Purpose |
-|---|---|
+| -------------------- | -------------------------------------------- |
 | `gomoku` | The interactive TUI |
 | `gomoku-httpd` | Stateless JSON daemon (used by the web flow) |
 | `gomoku-http-client` | CLI client for the daemon |

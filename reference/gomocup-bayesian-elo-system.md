@@ -20,7 +20,7 @@ Verbatim from <https://gomocup.org/elo-ratings/>:
 Concretely:
 
 | Parameter | Gomocup value | Meaning |
-| ----------------- | ------------- | ---------------------------------------------------------------------------------------- |
+| -------------- | ------------- | ------------------------------------------------------------------------------------- |
 | `eloAdvantage` | `0` | No first-mover bonus baked in. Rating differences fully explain results. |
 | `eloDraw` | `0.01` | Draws are treated as essentially impossible. (Gomoku has very few draws in practice.) |
 | Prior | default | A small virtual game count keeps brand-new engines from running off to ±∞. |
@@ -42,7 +42,7 @@ References:
 
 - Gomocup Elo page: <https://gomocup.org/elo-ratings/>
 - Tournament rules: <https://gomocup.org/detail-information/>
-- Coulom, R. *Bayesian Elo Rating* — <https://www.remi-coulom.fr/Bayesian-Elo/>
+- Coulom, R. _Bayesian Elo Rating_ — <https://www.remi-coulom.fr/Bayesian-Elo/>
 - Wikipedia, Elo rating system: <https://en.wikipedia.org/wiki/Elo_rating_system>
 
 ## 2. The current ranking system in this app
@@ -101,7 +101,7 @@ new_a      = old_a + K * (score_a - expected_a)
 `score_a` ∈ {0, 0.5, 1}. K-factor schedule (mirrors USCF/FIDE practice):
 
 | Games played by player | K | Reason |
-| ---------------------- | -- | -------------------------------------- |
+| ---------------------- | --- | --------------------------------------- |
 | 0 – 19 ("provisional") | 40 | Quickly converge from starting estimate |
 | 20 – 99 | 24 | Still actively calibrating |
 | 100 + | 16 | Stable competitive rating |
@@ -130,7 +130,7 @@ engine in a Gomocup tournament.
 Concrete proposal — six AI tiers, seeded with rough strength estimates:
 
 | Tier name | depth | radius | seeded Elo |
-| ------------- | ----- | ------ | ---------- |
+| ----------- | ----- | ------ | ---------- |
 | `ai-easy` | 2 | 2 | 800 |
 | `ai-novice` | 3 | 2 | 1200 |
 | `ai-club` | 4 | 3 | 1600 |
@@ -192,21 +192,21 @@ joins `rating_subjects` + `elo_ratings` and orders by `rating DESC`.
 ### Backend — `api/app/`
 
 | File | Change |
-| ----------------------------- | -------------------------------------------------------------------------------------- |
+| --------------------------- | ------------------------------------------------------------------------------------- |
 | `scoring.py` | Keep `game_score()` for legacy display; add `elo.py` for the new system. |
-| `elo.py` *(new)* | `expected(a, b)`, `update(a, b, result, k_a, k_b)`, `k_factor(games_played, rating)`. |
-| `models/rating.py` *(new)* | SQLAlchemy models for `rating_subjects`, `elo_ratings`. |
+| `elo.py` _(new)_ | `expected(a, b)`, `update(a, b, result, k_a, k_b)`, `k_factor(games_played, rating)`. |
+| `models/rating.py` _(new)_ | SQLAlchemy models for `rating_subjects`, `elo_ratings`. |
 | `routers/game.py:save_game` | After save, look up both subjects, apply Elo update in same transaction. |
 | `routers/leaderboard.py` | Switch query to `elo_ratings JOIN rating_subjects` ordered by rating. |
 | `routers/user.py:get_me` | Return `rating`, `peak_rating`, `games_count`, recent rating delta. |
-| `cli/elo.py` *(new)* | `recalibrate` (run BayesElo over history), `seed-ai` (insert AI subjects with seeds). |
-| `bayeselo.py` *(new)* | Pure-Python MM fitter for BayesElo. Used by `cli elo recalibrate`. |
-| `tests/test_elo.py` *(new)* | Symmetric updates sum to 0; expected ∈ [0,1]; +400 ⇒ ~91% expectation; etc. |
+| `cli/elo.py` _(new)_ | `recalibrate` (run BayesElo over history), `seed-ai` (insert AI subjects with seeds). |
+| `bayeselo.py` _(new)_ | Pure-Python MM fitter for BayesElo. Used by `cli elo recalibrate`. |
+| `tests/test_elo.py` _(new)_ | Symmetric updates sum to 0; expected ∈ [0,1]; +400 ⇒ ~91% expectation; etc. |
 
 ### Frontend — `frontend/src/`
 
 | File | Change |
-| ------------------------------------- | -------------------------------------------------------------------------------------------- |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `components/LeaderboardModal.tsx` | Replace `score`/`rating (0-100)` columns with `rating` (Elo int) + `Δ` last-30-day delta. |
 | `components/DifficultySettingsModal.tsx` | Replace "score formula" explainer with "you'll gain or lose Elo against the AI tier". |
 | `components/PostGameModal.tsx` | After game: "Rating: 1480 → 1494 (+14)" instead of "Score: 5300 / Rating: 73.1". |
@@ -231,18 +231,18 @@ This whole process is idempotent: rerunning it should yield the same numbers.
 
 1. **Rule-set separation.** Gomocup keeps freestyle/standard/renju Elo lists
    apart. Today the app only plays freestyle. Add the column now (cheap) and
-   only ever populate `'freestyle'` for the foreseeable future? *(Recommended:
-   yes — costs nothing.)*
+   only ever populate `'freestyle'` for the foreseeable future? _(Recommended:
+   yes — costs nothing.)_
 1. **Board size separation.** 15×15 vs 19×19 are arguably different games. Keep
-   one Elo across both, or split? *(Recommended: one Elo, note the board size
-   in the game record only.)*
+   one Elo across both, or split? _(Recommended: one Elo, note the board size
+   in the game record only.)_
 1. **AI tier granularity.** Six tiers as proposed, or one per `(depth, radius)`
-   pair (would be 25–50 subjects)? *(Recommended: six. Easier to display and
-   the depth-5/depth-4 difference is small enough that pooling is fine.)*
+   pair (would be 25–50 subjects)? _(Recommended: six. Easier to display and
+   the depth-5/depth-4 difference is small enough that pooling is fine.)_
 1. **Showing the legacy "score" anywhere?** Recommend dropping it from the UI
    in the same release that ships Elo, but leaving the column in the DB.
 1. **Initial human rating.** 1200 (forgiving) or 1500 (chess-standard)?
-   *(Recommended: 1500 with K=40 provisional — converges fast either way.)*
+   _(Recommended: 1500 with K=40 provisional — converges fast either way.)_
 1. **Anti-abuse.** Without it, anyone can spawn a bot client and farm an
    `ai-easy` opponent. Minimum mitigation: rate-limit Elo-affecting games per
    account per hour; don't award Elo for repeat games against the same
@@ -263,7 +263,7 @@ This whole process is idempotent: rerunning it should yield the same numbers.
 ## 10. Estimated effort
 
 | Step | Estimate |
-| ----------------------------------------------------- | -------- |
+| --------------------------------------------------- | ------------- |
 | Schema migration + models | 0.5 day |
 | `elo.py` + tests | 0.5 day |
 | Backend wiring (`save_game`, leaderboard, user) | 0.5 day |

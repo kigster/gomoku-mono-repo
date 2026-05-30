@@ -90,7 +90,7 @@ always visible and always enabled.
 ### Terminal transitions
 
 | Event | UI behaviour | Backend side-effect |
-| --------------------------------- | -------------------------------------------------------------------- | ---------------------------------------------------- |
+| ------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------- |
 | Guest follows the link | Modal closes, browser navigates to `/play/{code}` | Existing `POST /multiplayer/{code}/join` (unchanged) |
 | Host clicks `[X]` | Modal closes, AI game initialised with current settings | `POST /multiplayer/{code}/cancel` — state=cancelled |
 | 15 minutes elapse without guest | Modal closes, toast "Your invite expired", AI game initialised | Backend transitions state to `cancelled` lazily |
@@ -228,7 +228,7 @@ class MultiplayerGameView(BaseModel):
 In `api/tests/test_multiplayer.py`:
 
 | Test | What it asserts |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| --------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | `test_new_game_with_host_color_null` | `color_chosen_by='guest'`, `host_color is None`, response has `expires_at` ~ 15 min ahead. |
 | `test_join_when_guest_chooses_picks_color` | guest POSTs `{chosen_color: 'O'}` ⇒ `host_color = 'X'`, guest gets `'O'`, state in_progress. |
 | `test_join_when_guest_chooses_missing_color_returns_422` | omitting `chosen_color` ⇒ 422 with detail `chosen_color_required`. |
@@ -270,11 +270,11 @@ Props:
 
 ```typescript
 type Props = {
-  authToken: string
-  onAIChosen: () => void                 // user picked AI; close + start AI flow
-  onMultiplayerJoined: (code: string) => void  // navigate to /play/{code}
-  onClose: () => void                    // user clicked X; treat as "AI"
-}
+  authToken: string;
+  onAIChosen: () => void; // user picked AI; close + start AI flow
+  onMultiplayerJoined: (code: string) => void; // navigate to /play/{code}
+  onClose: () => void; // user clicked X; treat as "AI"
+};
 ```
 
 ### New: `useMultiplayerHostPolling.ts`
@@ -321,7 +321,7 @@ In `frontend/src/components/__tests__/`:
   - Pressing "Start" with full Human selections POSTs `/multiplayer/new` (mocked).
   - On a successful POST, the link is rendered, then the waiting view appears.
   - Pressing the X in the waiting view fires `POST /multiplayer/{code}/cancel`
-    *and* `onClose`.
+    _and_ `onClose`.
   - The counter increments while waiting (fake timers).
   - On 15 minutes elapsed: `onClose` fires automatically.
 

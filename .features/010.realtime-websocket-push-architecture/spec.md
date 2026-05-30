@@ -13,7 +13,7 @@ hatch) but stops being the primary correctness mechanism.
 The current frontend runs four pollers:
 
 | Concern | Endpoint | Cadence |
-|---|---|---|
+| ---------------------- | ----------------------------------------- | ----------------------- |
 | Incoming invites | `GET /chat/incoming` | 5 s |
 | Multiplayer game state | `GET /multiplayer/<code>?since_version=N` | 300 ms → 5 s tiered |
 | Chat messages | `GET /chat/<code>/messages?since=N` | piggybacks on game poll |
@@ -186,7 +186,7 @@ document the WS contract in `reference/realtime-protocol.md`.
 ## Estimate
 
 | Phase | Effort | Notes |
-|---|---|---|
+| -------------- | -------------- | ---------------------------------------- |
 | 0 — cleanup | ~½ week | Mostly in flight already |
 | 1 — foundation | 1 week | Includes Redis wiring + Terraform |
 | 2 — invites | ~½ week | Smallest feature; foundation shakedown |

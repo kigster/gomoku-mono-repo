@@ -6,8 +6,8 @@
 #ifndef NET_JSON_API_H
 #define NET_JSON_API_H
 
-#include "game.h"
 #include "ai.h"
+#include "game.h"
 #include <stddef.h>
 #include <time.h>
 
@@ -50,16 +50,17 @@ char *json_api_serialize_game(game_state_t *game);
 
 /**
  * Extended serialization with scoring report for the latest AI move.
- * When report is non-NULL, adds scoring, offensive_max_score, defensive_max_score
- * to the last move in the moves array.
+ * When report is non-NULL, adds scoring, offensive_max_score,
+ * defensive_max_score to the last move in the moves array.
  *
  * @param game The game state to serialize
  * @param report Scoring report for the latest move (NULL to omit)
  * @param total_time_ms Total thinking time in seconds for the latest move
  * @return Allocated JSON string (caller must free), or NULL on error
  */
-char *json_api_serialize_game_ex(game_state_t *game, const scoring_report_t *report,
-                                  double total_time_sec);
+char *json_api_serialize_game_ex(game_state_t *game,
+                                 const scoring_report_t *report,
+                                 double total_time_sec);
 
 //===============================================================================
 // RESPONSE HELPERS

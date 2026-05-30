@@ -12,8 +12,8 @@ optimistic-concurrency version number.
    modal opens.
 1. Pick **Another Player**. The moment that radio is selected the
    server creates the game and the modal renders:
-   - Two extra radios — *who chooses the colour* (you or the
-     opponent) and, if you chose, *which colour* (Black/X first or
+   - Two extra radios — _who chooses the colour_ (you or the
+     opponent) and, if you chose, _which colour_ (Black/X first or
      White/O).
    - Your invite URL with a copy button (`https://app.gomoku.games/play/AB7K3X`).
    - The bare 6-character code with its own copy button.
@@ -38,7 +38,7 @@ A guest reaches the game one of two ways:
   `/play/<code>` route and auto-fires `POST /multiplayer/<code>/join`
   with the user's JWT. If the host let the guest pick the colour, a
   small picker shows first.
-- **Paste the host's code** — open *New Multiplayer Game*, drop the
+- **Paste the host's code** — open _New Multiplayer Game_, drop the
   code into the "Got an invitation?" input. The Start button greys
   out (you're joining, not hosting) and **Join** lights up amber.
   Click Join → land in the game.
@@ -59,7 +59,7 @@ a wall-clock-tiered cadence
 ([`pollingSchedule.ts`](../frontend/src/hooks/pollingSchedule.ts)):
 
 | Elapsed | Interval |
-|---|---|
+| --------- | -------- |
 | 0–10 min | 300 ms |
 | 10–30 min | 2 s |
 | 30–60 min | 3 s |
@@ -73,8 +73,8 @@ A win, draw, or resign moves the row to `state='finished'` and
 records two `games` rows (one per participant) cross-linked by
 `opponent_id`. The in-game panel then says either:
 
-- *"@you wins against @opponent"* (winner), or
-- *"Game Over"* + *"Lost to @opponent in N seconds."* (loser).
+- _"@you wins against @opponent"_ (winner), or
+- _"Game Over"_ + _"Lost to @opponent in N seconds."_ (loser).
 
 A **Resign** button is always available during play.
 
@@ -113,7 +113,7 @@ underlying formula and the BayesElo recalibration plan.
 ## API endpoints
 
 | Path | Purpose |
-|---|---|
+| ------------------------------ | ------------------------------------------------------------ |
 | `POST /multiplayer/new` | Create an invite (`host_color: null` defers colour to guest) |
 | `POST /multiplayer/{c}/join` | Join — `chosen_color` required when host deferred |
 | `POST /multiplayer/{c}/cancel` | Host marks the game `cancelled` |

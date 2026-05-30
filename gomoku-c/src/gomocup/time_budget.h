@@ -17,9 +17,9 @@
 
 typedef struct {
   // Manager-supplied limits, all in ms. 0 means "unset / no limit".
-  int timeout_turn_ms;     // strict per-move
-  int timeout_match_ms;    // overall match
-  int time_left_ms;        // remaining match time (manager's authoritative value)
+  int timeout_turn_ms;  // strict per-move
+  int timeout_match_ms; // overall match
+  int time_left_ms;     // remaining match time (manager's authoritative value)
 
   // Local cache so we can keep a running estimate of time_left between INFO
   // messages. Updated after each move using elapsed wall clock.

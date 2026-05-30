@@ -14,7 +14,7 @@ stop conflating them with the hype.
 
 The three surfaces share contracts (HTTP JSON schema, Elo migration
 story) but most day-to-day work touches one at a time. That is the
-exact shape where multi-agent orchestration *might* pay off —
+exact shape where multi-agent orchestration _might_ pay off —
 independent work fans out, shared contracts gate merging. Multiple
 "10x" claims circulating online conflate distinct patterns, each with
 different cost/benefit profiles and failure modes. We need a clear
@@ -113,7 +113,7 @@ briefing prompt is the problem, not the pattern.
 - A "team" of always-on agents.
 - Agent-to-agent chat protocols.
 - Self-modifying agent prompts.
-- Agent review *replacing* (rather than augmenting) human code review.
+- Agent review _replacing_ (rather than augmenting) human code review.
 
 ## Success criteria
 

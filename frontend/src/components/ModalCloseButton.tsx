@@ -1,28 +1,28 @@
-export default function ModalCloseButton ({
+export default function ModalCloseButton({
   onClick,
-  className = '',
+  className = "",
 }: {
-  onClick: () => void
-  className?: string
+  onClick: () => void;
+  className?: string;
 }) {
   return (
     <button
-      type='button'
+      type="button"
       onClick={onClick}
       className={`inline-flex h-10 w-10 items-center justify-center rounded-full border
                   border-neutral-500/70 text-neutral-300 transition-colors duration-150
                   hover:border-[#FFAF22] hover:text-[#FFAF22] cursor-pointer ${className}`}
-      aria-label='Close'
+      aria-label="Close"
     >
       <svg
-        viewBox='0 0 384 512'
-        width='18'
-        height='18'
-        fill='currentColor'
-        aria-hidden='true'
+        viewBox="0 0 384 512"
+        width="18"
+        height="18"
+        fill="currentColor"
+        aria-hidden="true"
       >
-        <path d='M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256 342.6 150.6z' />
+        <path d="M342.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L192 210.7 86.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L146.7 256 41.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L192 301.3 297.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L237.3 256 342.6 150.6z" />
       </svg>
     </button>
-  )
+  );
 }

@@ -88,7 +88,7 @@ The engine has compile-time `[19][19]` candidate buffers in `ai.c` and `[361]` m
 All under `gomoku-c/src/gomocup/`:
 
 | File | Purpose |
-|------|---------|
+| --------------------------------- | ---------------------------------------------------------------------------- |
 | `main.c` | Process entry, stdio setup, main command loop |
 | `protocol.h` / `protocol.c` | Command parsing, response writers |
 | `coords.h` / `coords.c` | Gomocup `[X],[Y]` ↔ engine `(row,col)` translation |
@@ -100,7 +100,7 @@ All under `gomoku-c/src/gomocup/`:
 ### Commands the brain MUST handle
 
 | Command | Status | Response |
-|---------|--------|----------|
+| -------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `START [size]` | Required | `OK` only when `size == 15` (Standard category); else `ERROR unsupported board size`. **Known deviation**: the protocol spec says brains "must support size 20" but the Standard tournament fixes 15×15, so this binary intentionally accepts only 15. |
 | `BEGIN` | Required | `[X],[Y]` — the canonical centre square. For board size N, that is `floor((N-1)/2), floor((N-1)/2)`. On 15×15 = `7,7`. |
 | `TURN [X],[Y]` | Required | `[X],[Y]` |
@@ -111,13 +111,13 @@ All under `gomoku-c/src/gomocup/`:
 | `RESTART` | Optional but supported | `OK` — clear board, keep config |
 | `TAKEBACK [X],[Y]` | Optional but supported | `OK` — undo last move at cell |
 | `RECTSTART [w],[h]` | Decline | `ERROR rectangular boards not supported` |
-| `SWAP2BOARD` | Decline initially | `ERROR swap2 not supported` — `SWAP2BOARD` is a *known* command in the spec, so the spec-correct way to refuse a known-but-unimplemented command is `ERROR`, not `UNKNOWN`. Standard tournament does not invoke Swap2; Freestyle does. |
+| `SWAP2BOARD` | Decline initially | `ERROR swap2 not supported` — `SWAP2BOARD` is a _known_ command in the spec, so the spec-correct way to refuse a known-but-unimplemented command is `ERROR`, not `UNKNOWN`. Standard tournament does not invoke Swap2; Freestyle does. |
 | `PLAY` | Decline | We never issue `SUGGEST`, so `PLAY` should not arrive |
 
 ### Brain-initiated outputs
 
 | Output | Purpose |
-|--------|---------|
+| ------------------------ | ---------------------------------------------------------------- |
 | `[X],[Y]` | Move response |
 | `OK` / `ERROR <message>` | Init responses |
 | `UNKNOWN <message>` | For commands we don't recognise |
@@ -127,7 +127,7 @@ All under `gomoku-c/src/gomocup/`:
 ### INFO keys to honour
 
 | Key | Action |
-|-----|--------|
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `timeout_turn` | Store as max ms for the next move (0 = play instantly). Default if never sent: 30000 ms (the tournament cap). |
 | `timeout_match` | Store as overall match budget in ms. Default if never sent: 180000 ms. |
 | `time_left` | Manager's authoritative remaining match time in ms, sent before each move. **Replaces** the locally-tracked match clock — do not just decrement our estimate when this arrives. |
@@ -233,7 +233,7 @@ gomocup-win: pbrain-kig-standard64.exe pbrain-kig-standard-x86.exe
 ### POSIX-header audit (cross-compile risks)
 
 | File | Headers | Cross-compile risk |
-|------|---------|--------------------|
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
 | `gomoku.{h,c}`, `board.{h,c}`, `ai.{h,c}` | `<stdio.h>`, `<stdlib.h>`, `<string.h>`, `<time.h>`, `<math.h>`, `<ctype.h>`, `<stddef.h>`, `<stdint.h>` | None — all portable |
 | `game.c::get_current_time` | `clock_gettime(CLOCK_MONOTONIC, ...)` | Supported by mingw-w64's winpthreads since ~2017 — verify at first build, fall back to `QueryPerformanceCounter` only if the build fails |
 | `ansi.h` | macros only, no headers | None — the brain's `main.c` won't `printf` ANSI escapes anyway |

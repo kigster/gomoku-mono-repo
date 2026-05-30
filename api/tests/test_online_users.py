@@ -49,9 +49,7 @@ async def test_game_start_inserts_in_progress_row(client: AsyncClient, auth_head
 
 
 @pytest.mark.asyncio
-async def test_game_start_abandons_previous_in_progress(
-    client: AsyncClient, auth_headers
-):
+async def test_game_start_abandons_previous_in_progress(client: AsyncClient, auth_headers):
     """A user who starts a fresh AI game while one is already pending has
     the older row flipped to `abandoned` automatically. Keeps the
     `online_users` ai-battle classification unambiguous."""
@@ -73,9 +71,7 @@ async def test_game_start_abandons_previous_in_progress(
 
 
 @pytest.mark.asyncio
-async def test_game_save_with_game_id_updates_in_place(
-    client: AsyncClient, auth_headers
-):
+async def test_game_save_with_game_id_updates_in_place(client: AsyncClient, auth_headers):
     """`/game/save` carrying the `game_id` returned by `/game/start`
     UPDATEs the existing row instead of inserting a new one — exactly
     one row per AI session."""
@@ -110,9 +106,7 @@ async def test_game_save_with_game_id_updates_in_place(
             "SELECT COUNT(*) FROM games WHERE user_id = (SELECT id FROM users WHERE username = $1)",
             "testplayer",
         )
-        row = await conn.fetchrow(
-            "SELECT status, winner FROM games WHERE id = $1::uuid", game_id
-        )
+        row = await conn.fetchrow("SELECT status, winner FROM games WHERE id = $1::uuid", game_id)
     finally:
         await conn.close()
     assert count == 1
@@ -121,9 +115,7 @@ async def test_game_save_with_game_id_updates_in_place(
 
 
 @pytest.mark.asyncio
-async def test_game_save_without_game_id_inserts_new_row(
-    client: AsyncClient, auth_headers
-):
+async def test_game_save_without_game_id_inserts_new_row(client: AsyncClient, auth_headers):
     """Backward-compat — a save with no `game_id` still INSERTs (legacy
     clients that never called /start, or skipped the response capture)."""
     game_json = {
@@ -136,17 +128,13 @@ async def test_game_save_without_game_id_inserts_new_row(
         "board_state": [],
         "moves": [{"X (human)": [7, 7], "time_ms": 500}],
     }
-    saved = await client.post(
-        "/game/save", headers=auth_headers, json={"game_json": game_json}
-    )
+    saved = await client.post("/game/save", headers=auth_headers, json={"game_json": game_json})
     assert saved.status_code == 200, saved.text
     new_id = saved.json()["id"]
 
     conn = await asyncpg.connect(TEST_DSN)
     try:
-        row = await conn.fetchrow(
-            "SELECT status FROM games WHERE id = $1::uuid", new_id
-        )
+        row = await conn.fetchrow("SELECT status FROM games WHERE id = $1::uuid", new_id)
     finally:
         await conn.close()
     assert row["status"] == "completed"
@@ -200,9 +188,7 @@ async def test_online_view_classifies_human_battle(
     conn = await asyncpg.connect(TEST_DSN)
     try:
         mp_game_uuid = str(
-            await conn.fetchval(
-                "SELECT id FROM multiplayer_games WHERE code = $1", code
-            )
+            await conn.fetchval("SELECT id FROM multiplayer_games WHERE code = $1", code)
         )
     finally:
         await conn.close()
@@ -236,9 +222,7 @@ async def test_online_endpoint_omits_opponent_for_non_human_battle(
 
 
 @pytest.mark.asyncio
-async def test_online_endpoint_respects_15min_window(
-    client: AsyncClient, auth_headers, make_user
-):
+async def test_online_endpoint_respects_15min_window(client: AsyncClient, auth_headers, make_user):
     """`/social/online` filters down to 15 minutes even though the
     underlying view keeps an 8h window — older logins shouldn't
     pollute the chat-panel /who list. We can't backdate the caller
@@ -252,9 +236,7 @@ async def test_online_endpoint_respects_15min_window(
             "UPDATE users SET last_seen_at = NOW() - INTERVAL '20 minutes' "
             "WHERE username = 'stale_user'"
         )
-        view_row = await conn.fetchrow(
-            "SELECT 1 FROM online_users WHERE username = 'stale_user'"
-        )
+        view_row = await conn.fetchrow("SELECT 1 FROM online_users WHERE username = 'stale_user'")
     finally:
         await conn.close()
     assert view_row is not None, "view should still surface 20-min-old user"
@@ -287,9 +269,7 @@ async def test_online_view_human_battle_beats_ai_battle(
 
 
 @pytest.mark.asyncio
-async def test_online_view_respects_8h_window(
-    client: AsyncClient, auth_headers
-):
+async def test_online_view_respects_8h_window(client: AsyncClient, auth_headers):
     """Users not seen within the 8h window are excluded — we backdate
     last_seen_at past the cutoff and check that the testplayer falls
     out of the view."""
@@ -305,9 +285,7 @@ async def test_online_view_respects_8h_window(
     # bumping last_seen_at back to NOW().
     conn = await asyncpg.connect(TEST_DSN)
     try:
-        row = await conn.fetchrow(
-            "SELECT * FROM online_users WHERE username = 'testplayer'"
-        )
+        row = await conn.fetchrow("SELECT * FROM online_users WHERE username = 'testplayer'")
     finally:
         await conn.close()
     assert row is None
@@ -341,8 +319,7 @@ async def test_human_battle_drops_when_opponent_goes_offline(
     try:
         # Backdate the guest only — host stays current.
         await conn.execute(
-            "UPDATE users SET last_seen_at = NOW() - INTERVAL '9 hours' "
-            "WHERE username = $1",
+            "UPDATE users SET last_seen_at = NOW() - INTERVAL '9 hours' WHERE username = $1",
             second_registered_user["username"],
         )
     finally:
@@ -350,9 +327,7 @@ async def test_human_battle_drops_when_opponent_goes_offline(
 
     resp = await client.get("/social/online", headers=auth_headers)
     body = resp.json()
-    host_row = next(
-        (u for u in body["users"] if u["username"] == "testplayer"), None
-    )
+    host_row = next((u for u in body["users"] if u["username"] == "testplayer"), None)
     assert host_row is not None, "host should still be visible"
     assert host_row["state"] == "idle", (
         "host should no longer be classified as human-battle once the "
@@ -360,9 +335,7 @@ async def test_human_battle_drops_when_opponent_goes_offline(
     )
     assert host_row["opponent_username"] is None
     # Guest's own row is filtered out by the 8h presence window.
-    assert second_registered_user["username"] not in {
-        u["username"] for u in body["users"]
-    }
+    assert second_registered_user["username"] not in {u["username"] for u in body["users"]}
 
 
 @pytest.mark.asyncio
@@ -389,20 +362,14 @@ async def test_human_battle_waiting_game_exempt_from_opponent_presence(
 
 
 @pytest.mark.asyncio
-async def test_online_endpoint_pagination(
-    client: AsyncClient, auth_headers, make_user
-):
+async def test_online_endpoint_pagination(client: AsyncClient, auth_headers, make_user):
     """`limit` + `offset` pagination round-trips, and `total` counts
     rows in the view regardless of page size."""
     # Create extra users so there are >10 in the view.
     for i in range(12):
         await make_user(f"crowd_{i}")
-    page1 = (
-        await client.get("/social/online?limit=10&offset=0", headers=auth_headers)
-    ).json()
-    page2 = (
-        await client.get("/social/online?limit=10&offset=10", headers=auth_headers)
-    ).json()
+    page1 = (await client.get("/social/online?limit=10&offset=0", headers=auth_headers)).json()
+    page2 = (await client.get("/social/online?limit=10&offset=10", headers=auth_headers)).json()
     assert len(page1["users"]) == 10
     assert page2["total"] == page1["total"]
     assert page1["total"] >= 13  # 12 + testplayer at minimum

@@ -11,7 +11,7 @@ Today every "did anything change?" loop in the frontend is a poller hitting
 FastAPI on a fixed cadence:
 
 | Concern | Endpoint | Cadence | Driver |
-|---|---|---|---|
+| ---------------------- | ----------------------------------------- | ----------------------- | -------------------- |
 | Incoming invites | `GET /chat/incoming` | 5 s | `InviteAcceptModal` |
 | Multiplayer game state | `GET /multiplayer/<code>?since_version=N` | 300 ms → 5 s tiered | `useMultiplayerGame` |
 | Chat messages | `GET /chat/<code>/messages?since=N` | piggybacks on game poll | `useChatMessages` |
@@ -25,7 +25,7 @@ manages to create two `waiting` rows targeting the same guest (slow network +
 retry, dev-mode strict effect double-fire, two clicks), the modal pops once
 per row because the ref only suppresses codes the modal has already shown.
 There is no server-side notion of "this invite was already presented to the
-recipient." The polling design *cannot* distinguish "new invite from same
+recipient." The polling design _cannot_ distinguish "new invite from same
 person" from "redelivered invite I already accepted."
 
 **Bug B — inviter never sees the acceptance.** The slash-command `/invite`
@@ -144,7 +144,7 @@ concerns; the frontend is the orchestrator that decides "use WS where
 available, fall back to poll." This lets us roll back any single phase
 without taking down the rest.
 
-### Phase 0 — Pre-migration cleanup *(no WS code)*
+### Phase 0 — Pre-migration cleanup _(no WS code)_
 
 Tighten the surface the WS code has to honour. Mostly already addressed
 in the latest chat-simplification pass:
@@ -155,8 +155,8 @@ in the latest chat-simplification pass:
 - `/who [@user @user]` — when usernames are passed, the response is
   filtered to those users (state from the view if present, `'offline'`
   otherwise). When none are passed, the existing paginated view is used.
-  *(Backend: add `usernames=` query param to `GET /social/online`; expand
-  the `OnlineUserEntry.state` Literal to include `'offline'`.)*
+  _(Backend: add `usernames=` query param to `GET /social/online`; expand
+  the `OnlineUserEntry.state` Literal to include `'offline'`.)_
 - Server-side dedupe for invite delivery: add
   `multiplayer_games.invite_delivered_at TIMESTAMPTZ NULL`. `/chat/incoming`
   stamps it on first read; subsequent reads from the same recipient skip
@@ -202,7 +202,7 @@ Deliverables:
 Acceptance: a manual `wscat`-style test sees `ready` on connect and a
 `pong` per `ping`. No feature behaviour changes.
 
-### Phase 2 — Invite acceptance push *(replaces `/chat/incoming` polling)*
+### Phase 2 — Invite acceptance push _(replaces `/chat/incoming` polling)_
 
 Smallest possible feature so we shake out the foundation against real UX.
 
@@ -219,7 +219,7 @@ Acceptance: in a two-tab test, bob types `/invite @kig` and within
 200 ms kig's modal renders. Accepting once never shows the modal a
 second time even if a reconciliation poll fires.
 
-### Phase 3 — Game state push *(replaces `/multiplayer/<code>` polling)*
+### Phase 3 — Game state push _(replaces `/multiplayer/<code>` polling)_
 
 The big one. The polling cadence schedule
 (`frontend/src/hooks/pollingSchedule.ts`) goes away.
@@ -241,7 +241,7 @@ The big one. The polling cadence schedule
 Acceptance: a Cypress test that moves on tab A and asserts the move
 appears on tab B within 250 ms p95.
 
-### Phase 4 — Chat push *(replaces `/chat/<code>/messages` polling)*
+### Phase 4 — Chat push _(replaces `/chat/<code>/messages` polling)_
 
 Trivial after Phase 3 since chat already piggybacks on the game's
 polling lifecycle.
@@ -254,7 +254,7 @@ polling lifecycle.
 Acceptance: messages typed in one tab appear in the other within
 200 ms; no duplicate-id rows.
 
-### Phase 5 — Presence push *(replaces `/social/online` polling)*
+### Phase 5 — Presence push _(replaces `/social/online` polling)_
 
 `/social/online` becomes the snapshot endpoint (initial load and
 recovery only). Live deltas come over a `presence` channel.
@@ -287,9 +287,9 @@ After Phases 2–5 have soaked for ≥ 1 week in production:
 Minimal — the existing tables already carry the version columns we need.
 
 1. `ALTER TABLE multiplayer_games ADD COLUMN invite_delivered_at TIMESTAMPTZ NULL` (Phase 0).
-1. `ALTER TYPE online_state ADD VALUE 'offline'` *(only if we represent
+1. `ALTER TYPE online_state ADD VALUE 'offline'` _(only if we represent
    state as a Postgres enum — currently a string CHECK, so no migration
-   needed beyond a CHECK relaxation; double-check before writing).*
+   needed beyond a CHECK relaxation; double-check before writing)._
 1. Index: `multiplayer_games (host_user_id, state) WHERE state IN ('waiting','in_progress')` already exists — reuse for
    the inviter-subscribes-to-their-game lookup.
 
@@ -353,7 +353,7 @@ swap is mechanical.
 Working solo at the current pace, paid by calendar week:
 
 | Phase | Effort | Notes |
-|---|---|---|
+| -------------- | -------------- | ------------------------------------------ |
 | 0 — cleanup | ~½ week | Mostly already in flight in current branch |
 | 1 — foundation | 1 week | Includes Redis wiring + Terraform |
 | 2 — invites | ~½ week | Smallest feature; foundation shakedown |

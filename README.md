@@ -52,7 +52,7 @@ The distributed game architecture is much different than a single-binery TUI ver
 This monorepo ships **four ways to play** the same Gomoku engine, all backed by one C99 codebase under `gomoku-c/`:
 
 | # | Mode | Where you play | Deep dive |
-|---|---|---|---|
+| --- | --------------------------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | 1 | Human vs AI in the terminal (TUI) | `bin/gomoku` on your machine | [.features/004.terminal-ai-game-binary.done/spec.md](.features/004.terminal-ai-game-binary.done/spec.md) |
 | 2 | Human vs AI on the web | <https://app.gomoku.games> | [.features/005.web-spa-ai-game-flow.done/spec.md](.features/005.web-spa-ai-game-flow.done/spec.md) |
 | 3 | Human vs Human on the web | Invite link, both players in browser | [.features/006.web-multiplayer-invite-flow.done/spec.md](.features/006.web-multiplayer-invite-flow.done/spec.md) |
@@ -152,7 +152,7 @@ make -C gomoku-c all install
 This compiles three binaries into `bin/`:
 
 | Binary | Purpose |
-|---|---|
+| -------------------- | ------------------------------------------------------- |
 | `gomoku` | Interactive terminal game (ANSI color, arrow-key input) |
 | `gomoku-httpd` | Stateless HTTP daemon for networked play |
 | `gomoku-http-client` | CLI client for testing `gomoku-httpd` |
@@ -222,7 +222,7 @@ The full stack runs on your dev machine: nginx for TLS, envoy for load balancing
 ### Prerequisites
 
 | Dependency | Version | Purpose |
-|---|---|---|
+| ------------------------------------- | -------- | ---------------------------------------- |
 | C compiler (gcc/clang) | any | Build game engine |
 | Make | any | Build system |
 | [just](https://github.com/casey/just) | 1.0+ | Monorepo task runner |
@@ -389,7 +389,7 @@ $EDITOR .env
 The `.env` file at the repo root holds **deploy-time** keys. `bin/deploy` reads them and maps them into `TF_VAR_*` environment variables before invoking Terraform; Terraform then writes them to the Cloud Run service env. The FastAPI app at runtime reads these names directly off `process.env` — Pydantic settings load them from there, not from `.env`.
 
 | `.env` key | Runtime env on Cloud Run | Required? | What it is |
-|---|---|---|---|
+| -------------------------------------------------------------------------------- | ------------------------ | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `PROJECT_ID` | — (used by deploy only) | required | GCP project ID |
 | `REGION` | — (used by deploy only) | optional (defaults `us-central1`) | GCP region |
 | `PRODUCTION_DATABASE_URL` / `STAGING_DATABASE_URL` | `DATABASE_URL` | required | Pooled Postgres DSN. Use Neon's pooled connection (`pgbouncer=true`) — Cloud Run scales horizontally and direct connections will exhaust idle slots fast. |
@@ -546,7 +546,7 @@ The tables below split variables by whether the app can boot/run without them. S
 ### Required (the app will not function correctly without these)
 
 | Variable | Required In | Purpose |
-|---|---|---|
+| ------------------ | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ENVIRONMENT` | always | `development`, `test`, `ci`, or `production` — selects which `.env.{stage}` file Pydantic loads. Defaults to `development`. |
 | `DATABASE_URL` | production, any non-default DB | Full PostgreSQL DSN, e.g. `postgresql://user:pass@host/gomoku`. Without this, the app falls back to `postgresql://postgres@localhost/gomoku` which only works for local development. |
 | `JWT_SECRET` | production | HMAC signing key for auth tokens. The committed default `change-me-in-production` MUST be overridden in any deployed environment. Generate with `just jwt-secret` or `openssl rand -base64 32`. |
@@ -556,24 +556,24 @@ The tables below split variables by whether the app can boot/run without them. S
 ### Required when email is enabled (`EMAIL_PROVIDER=sendgrid`)
 
 | Variable | Purpose |
-|---|---|
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `EMAIL_PROVIDER` | Set to `sendgrid` in production. Default `stdout` writes reset links to the console (development only). |
 | `SENDGRID_API_KEY` | SendGrid Web API v3 bearer token. Create at <https://app.sendgrid.com/settings/api_keys>. The app raises `RuntimeError` at send time if `EMAIL_PROVIDER=sendgrid` and this is unset. |
 | `EMAIL_FROM` | Sender address. Must belong to a SendGrid-authenticated domain (DKIM/SPF). Default `gomoku@email.gomoku.games`. |
 | `EMAIL_FROM_NAME` | Friendly display name on the `From:` header. Default `Gomoku Support`. |
 
-> **Note on SendGrid auth.** SendGrid's v3 API authenticates with a single API *key* (Bearer token). There is no separate API *ID* — the key alone identifies your account. Store `SENDGRID_API_KEY` in Cloud Run as a Secret Manager-backed env var, never in a committed `.env` file.
+> **Note on SendGrid auth.** SendGrid's v3 API authenticates with a single API _key_ (Bearer token). There is no separate API _ID_ — the key alone identifies your account. Store `SENDGRID_API_KEY` in Cloud Run as a Secret Manager-backed env var, never in a committed `.env` file.
 
 ### Optional (have safe defaults)
 
 | Variable | Default | Purpose |
-|---|---|---|
+| -------------------- | ---------------- | ----------------------------------------------------------------------------------------------- |
 | `JWT_ALGORITHM` | `HS256` | JWT signing algorithm. |
 | `JWT_EXPIRE_MINUTES` | `10080` (1 week) | Token lifetime. |
 | `CORS_ORIGINS` | `["*"]` | JSON array of allowed origins. Tighten in production. |
-| `HONEYCOMB_API_KEY` | *(none)* | Honeycomb ingest key — enables OTel tracing when set. No-op when unset. |
+| `HONEYCOMB_API_KEY` | _(none)_ | Honeycomb ingest key — enables OTel tracing when set. No-op when unset. |
 | `OTEL_SERVICE_NAME` | `gomoku-api` | Service name attached to every span. |
-| `CUSTOM_DOMAIN` | *(none)* | Override `PUBLIC_DOMAIN` (e.g. local dev hosts pointed at `dev.gomoku.games` via `/etc/hosts`). |
+| `CUSTOM_DOMAIN` | _(none)_ | Override `PUBLIC_DOMAIN` (e.g. local dev hosts pointed at `dev.gomoku.games` via `/etc/hosts`). |
 
 ## Project Structure
 
@@ -602,7 +602,7 @@ justfile                Monorepo orchestration
 ## Documentation
 
 | Document | Description |
-|---|---|
+| ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
 | [.features/004.terminal-ai-game-binary.done/spec.md](.features/004.terminal-ai-game-binary.done/spec.md) | **Mode 1** — TUI binary, CLI flags, depth/radius, recording |
 | [.features/005.web-spa-ai-game-flow.done/spec.md](.features/005.web-spa-ai-game-flow.done/spec.md) | **Mode 2** — web flow, settings panel, scoring, API |
 | [.features/006.web-multiplayer-invite-flow.done/spec.md](.features/006.web-multiplayer-invite-flow.done/spec.md) | **Mode 3** — invite links, polling cadence, lifecycle |
@@ -645,23 +645,23 @@ The FastAPI server (`api/`) is configured via environment variables. Locally, de
 ### Database
 
 | Variable | Default | Description |
-|---|---|---|
-| `DATABASE_URL` | *(none)* | Full PostgreSQL DSN, e.g. `postgresql://user:pass@host/gomoku`. Takes precedence over `DB_*` vars. |
-| `DB_SOCKET` | *(none)* | Unix socket path for Cloud SQL Proxy. |
+| -------------- | ---------- | -------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL` | _(none)_ | Full PostgreSQL DSN, e.g. `postgresql://user:pass@host/gomoku`. Takes precedence over `DB_*` vars. |
+| `DB_SOCKET` | _(none)_ | Unix socket path for Cloud SQL Proxy. |
 | `DB_NAME` | `gomoku` | Database name. |
 | `DB_USER` | `postgres` | Database user. |
-| `DB_PASSWORD` | *(none)* | Database password. |
+| `DB_PASSWORD` | _(none)_ | Database password. |
 
 ### Game Engine
 
 | Variable | Default | Description |
-|---|---|---|
+| ------------------ | ----------------------- | ----------------------------------------------------------- |
 | `GOMOKU_HTTPD_URL` | `http://localhost:8787` | Upstream game engine. With envoy: `http://localhost:10000`. |
 
 ### Authentication (JWT)
 
 | Variable | Default | Description |
-|---|---|---|
+| -------------------- | ------------------------- | ------------------------------------------------------ |
 | `JWT_SECRET` | `change-me-in-production` | HMAC signing key. Generate: `openssl rand -base64 32`. |
 | `JWT_ALGORITHM` | `HS256` | JWT signing algorithm. |
 | `JWT_EXPIRE_MINUTES` | `1440` | Token lifetime (default 24h). |
@@ -669,24 +669,24 @@ The FastAPI server (`api/`) is configured via environment variables. Locally, de
 ### CORS
 
 | Variable | Default | Description |
-|---|---|---|
+| -------------- | ------- | ------------------------------ |
 | `CORS_ORIGINS` | `["*"]` | JSON array of allowed origins. |
 
 ### Email
 
 | Variable | Default | Description |
-|---|---|---|
+| ------------------ | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `EMAIL_PROVIDER` | `stdout` | `stdout` (logs the reset link — dev only) or `sendgrid` (posts to SendGrid v3). |
 | `EMAIL_FROM` | `gomoku@email.gomoku.games` | Sender address. Must belong to a SendGrid-authenticated domain (DKIM/SPF). |
 | `EMAIL_FROM_NAME` | `Gomoku Support` | Friendly display name shown alongside `EMAIL_FROM` in the `From:` and `Reply-To:` headers. |
-| `SENDGRID_API_KEY` | *(none)* | SendGrid Web API v3 bearer token. Required when `EMAIL_PROVIDER=sendgrid` — the service raises `RuntimeError` at send time if missing. |
+| `SENDGRID_API_KEY` | _(none)_ | SendGrid Web API v3 bearer token. Required when `EMAIL_PROVIDER=sendgrid` — the service raises `RuntimeError` at send time if missing. |
 
 ### Telemetry
 
 | Variable | Default | Description |
-|---|---|---|
-| `HONEYCOMB_API_KEY` | *(none)* | Honeycomb Ingest key — enables OTLP/HTTP export of traces. No-op when unset. |
-| `HONEYCOMB_DATASET` | *(none)* | Required only for Honeycomb classic 32-char keys. Modern env-aware keys route by `service.name`. |
+| ----------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------ |
+| `HONEYCOMB_API_KEY` | _(none)_ | Honeycomb Ingest key — enables OTLP/HTTP export of traces. No-op when unset. |
+| `HONEYCOMB_DATASET` | _(none)_ | Required only for Honeycomb classic 32-char keys. Modern env-aware keys route by `service.name`. |
 | `OTEL_SERVICE_NAME` | `gomoku-api` | Resource attribute on every span. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `https://api.honeycomb.io/v1/traces` | Override only if using a different OTel collector. |
 

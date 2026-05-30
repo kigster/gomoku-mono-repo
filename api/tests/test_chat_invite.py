@@ -416,9 +416,7 @@ async def test_incoming_excludes_joined_invites(client: AsyncClient, make_user):
 
 
 @pytest.mark.asyncio
-async def test_invite_with_message_surfaces_in_incoming(
-    client: AsyncClient, make_user
-):
+async def test_invite_with_message_surfaces_in_incoming(client: AsyncClient, make_user):
     """`/chat/invite` with a `message` field stores it as a chat_messages
     row from the host; `/chat/incoming` surfaces it back to the
     invitee on the new `message` field."""
@@ -439,9 +437,7 @@ async def test_invite_with_message_surfaces_in_incoming(
 
 
 @pytest.mark.asyncio
-async def test_invite_without_message_returns_null_message(
-    client: AsyncClient, make_user
-):
+async def test_invite_without_message_returns_null_message(client: AsyncClient, make_user):
     alice = await make_user("alice")
     bob = await make_user("bob")
     await client.post(
@@ -454,9 +450,7 @@ async def test_invite_without_message_returns_null_message(
 
 
 @pytest.mark.asyncio
-async def test_decline_invite_cancels_game_and_posts_apology(
-    client: AsyncClient, make_user
-):
+async def test_decline_invite_cancels_game_and_posts_apology(client: AsyncClient, make_user):
     """Happy path: invitee declines, server flips the game to
     'cancelled' and inserts the apology chat message from the invitee."""
     alice = await make_user("alice")
@@ -467,17 +461,13 @@ async def test_decline_invite_cancels_game_and_posts_apology(
         json={"target_username": "bob"},
     )
     code = inv.json()["invited_code"]
-    decline = await client.post(
-        f"/chat/incoming/{code}/decline", headers=bob["headers"]
-    )
+    decline = await client.post(f"/chat/incoming/{code}/decline", headers=bob["headers"])
     assert decline.status_code == 200, decline.text
     assert decline.json() == {"declined": True}
 
     # The inviter sees the apology in the game's chat log. /chat/{code}/messages
     # requires the caller to be a participant — alice is the host, so allowed.
-    msgs = await client.get(
-        f"/chat/{code}/messages", headers=alice["headers"]
-    )
+    msgs = await client.get(f"/chat/{code}/messages", headers=alice["headers"])
     assert msgs.status_code == 200
     bodies = [m["message"] for m in msgs.json()["messages"]]
     assert "Apologies, but I can't play or chat at the moment." in bodies
@@ -485,27 +475,19 @@ async def test_decline_invite_cancels_game_and_posts_apology(
     # The game's lobby state is no longer pollable for joining — joining
     # a cancelled invite must surface a clear failure rather than silently
     # work.
-    join = await client.post(
-        f"/multiplayer/{code}/join", headers=bob["headers"], json={}
-    )
+    join = await client.post(f"/multiplayer/{code}/join", headers=bob["headers"], json={})
     assert join.status_code in (400, 409, 410)
 
 
 @pytest.mark.asyncio
-async def test_decline_unknown_code_returns_404(
-    client: AsyncClient, make_user
-):
+async def test_decline_unknown_code_returns_404(client: AsyncClient, make_user):
     bob = await make_user("bob")
-    resp = await client.post(
-        "/chat/incoming/ZZZZZZ/decline", headers=bob["headers"]
-    )
+    resp = await client.post("/chat/incoming/ZZZZZZ/decline", headers=bob["headers"])
     assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_decline_by_non_invitee_returns_403(
-    client: AsyncClient, make_user
-):
+async def test_decline_by_non_invitee_returns_403(client: AsyncClient, make_user):
     alice = await make_user("alice")
     await make_user("bob")
     carol = await make_user("carol")
@@ -516,16 +498,12 @@ async def test_decline_by_non_invitee_returns_403(
     )
     code = inv.json()["invited_code"]
     # Carol tries to decline an invite that was never offered to her.
-    resp = await client.post(
-        f"/chat/incoming/{code}/decline", headers=carol["headers"]
-    )
+    resp = await client.post(f"/chat/incoming/{code}/decline", headers=carol["headers"])
     assert resp.status_code == 403
 
 
 @pytest.mark.asyncio
-async def test_decline_after_join_returns_409(
-    client: AsyncClient, make_user
-):
+async def test_decline_after_join_returns_409(client: AsyncClient, make_user):
     """Once the invitee has already joined the game it's in_progress,
     not waiting — a late decline must 409 rather than retroactively
     cancel an active game."""
@@ -537,11 +515,7 @@ async def test_decline_after_join_returns_409(
         json={"target_username": "bob"},
     )
     code = inv.json()["invited_code"]
-    join = await client.post(
-        f"/multiplayer/{code}/join", headers=bob["headers"], json={}
-    )
+    join = await client.post(f"/multiplayer/{code}/join", headers=bob["headers"], json={})
     assert join.status_code == 200
-    resp = await client.post(
-        f"/chat/incoming/{code}/decline", headers=bob["headers"]
-    )
+    resp = await client.post(f"/chat/incoming/{code}/decline", headers=bob["headers"])
     assert resp.status_code == 409

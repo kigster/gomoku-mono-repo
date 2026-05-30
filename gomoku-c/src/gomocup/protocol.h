@@ -16,20 +16,20 @@
 #include <stddef.h>
 
 typedef enum {
-  CMD_UNKNOWN = 0,    // Unrecognised verb; the brain replies UNKNOWN <text>
-  CMD_INVALID,        // Recognised verb, malformed arguments
-  CMD_EMPTY,          // Blank line — no-op
-  CMD_START,          // START [size]
-  CMD_RECTSTART,      // RECTSTART [w],[h] (we decline)
-  CMD_RESTART,        // RESTART
-  CMD_BEGIN,          // BEGIN
-  CMD_TURN,           // TURN [X],[Y]
-  CMD_TAKEBACK,       // TAKEBACK [X],[Y]
-  CMD_BOARD,          // BOARD ... DONE — multi-line; parser only flags start
-  CMD_INFO,           // INFO [key] [value]
-  CMD_END,            // END
-  CMD_ABOUT,          // ABOUT
-  CMD_SWAP2BOARD      // SWAP2BOARD (we decline with ERROR)
+  CMD_UNKNOWN = 0, // Unrecognised verb; the brain replies UNKNOWN <text>
+  CMD_INVALID,     // Recognised verb, malformed arguments
+  CMD_EMPTY,       // Blank line — no-op
+  CMD_START,       // START [size]
+  CMD_RECTSTART,   // RECTSTART [w],[h] (we decline)
+  CMD_RESTART,     // RESTART
+  CMD_BEGIN,       // BEGIN
+  CMD_TURN,        // TURN [X],[Y]
+  CMD_TAKEBACK,    // TAKEBACK [X],[Y]
+  CMD_BOARD,       // BOARD ... DONE — multi-line; parser only flags start
+  CMD_INFO,        // INFO [key] [value]
+  CMD_END,         // END
+  CMD_ABOUT,       // ABOUT
+  CMD_SWAP2BOARD   // SWAP2BOARD (we decline with ERROR)
 } command_kind_t;
 
 typedef struct {
@@ -42,7 +42,7 @@ typedef struct {
   // For TURN / TAKEBACK / individual BOARD rows (callers reuse parse_board_row)
   int x;
   int y;
-  int field;  // For BOARD rows: 1 = self, 2 = opponent, 3 = winning line
+  int field; // For BOARD rows: 1 = self, 2 = opponent, 3 = winning line
 
   // For INFO
   char info_key[64];

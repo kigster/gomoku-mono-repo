@@ -15,7 +15,7 @@ ______________________________________________________________________
 ## 1. Decisions made up-front
 
 | Question | Decision | Why |
-| ------------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| ------------------------ | ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Matchmaking model | **Invite-link only** (`/play/CODE`) | Simplest UX, no lobby UI, no queue management. Public lobbies are a v2 feature. |
 | Auth requirement | **Both players authenticated** | Lets us hook the future Elo system in cleanly. Guests can be added later without migration. |
 | Transport | **Short polling, 1.5 s interval** | No new infra; works on multi-instance Cloud Run. Latency fine for a turn-based game. |
@@ -102,7 +102,7 @@ This keeps existing leaderboard / history endpoints working without schema churn
 All endpoints under prefix `/multiplayer`, all require auth (existing JWT
 dependency `app.security.get_current_user`). All return the same
 `MultiplayerGameView` shape (defined below) **except** that
-`GET /multiplayer/{code}` returns a slim *preview* view (only `code`,
+`GET /multiplayer/{code}` returns a slim _preview_ view (only `code`,
 `state`, `board_size`, `rule_set`, `host`, `guest`, `version`) when the
 caller is neither host nor guest, so a guest can render the join screen
 before posting `/join`.
@@ -113,7 +113,7 @@ server returns **`304 Not Modified`** with no body. This makes the
 1.5 s polling loop cheap on the wire.
 
 | Method | Path | Body | Returns |
-| ------ | ----------------------------- | --------------------------------------------- | ------------------------------------ |
+| ------ | ---------------------------- | ------------------------------------------------ | ------------------------------------------------- |
 | POST | `/multiplayer/new` | `{ board_size?: 15\|19, host_color?: 'X'\|'O' }` | `MultiplayerGameView` (state=waiting) |
 | POST | `/multiplayer/{code}/join` | `{}` | `MultiplayerGameView` (state=in_progress) |
 | GET | `/multiplayer/{code}` | (query: `since_version?: int`) | `MultiplayerGameView` (current state) |
@@ -144,7 +144,7 @@ class MultiplayerGameView(BaseModel):
 ### Error semantics (HTTP)
 
 | Situation | Status | Detail |
-| -------------------------------------------------------- | ------ | --------------------------------------- |
+| ----------------------------------------------- | ------ | ---------------------------------------- |
 | Code not found | 404 | `multiplayer_game_not_found` |
 | Auth missing | 401 | (existing middleware) |
 | Joining a game you already host | 409 | `cannot_join_own_game` |
@@ -223,14 +223,14 @@ matches `^/play/([A-Z0-9]{6})$`. **Do not** add `react-router-dom`.
 ### New route — `/play/[code]` (parsed manually, not via a router)
 
 | File | Role |
-| ------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `frontend/src/pages/MultiplayerGamePage.tsx` *(new)* | Top-level page: fetches state, renders board, handles polling. |
-| `frontend/src/components/WaitingForOpponent.tsx` *(new)* | Shown when `state === 'waiting'`. Copy-link button + QR code optional. |
-| `frontend/src/components/GameOverPanel.tsx` *(new)* | Result display, "Play again" link. |
-| `frontend/src/lib/multiplayerClient.ts` *(new)* | Typed wrappers around all `/multiplayer/*` endpoints. |
-| `frontend/src/hooks/useMultiplayerPolling.ts` *(new)* | Custom hook: polls every 1.5 s, exposes `{ state, sendMove }`. |
-| `frontend/src/components/Board.tsx` *(modified)* | Accept `onCellClick` prop; disable when `!yourTurn`. |
-| `frontend/src/App.tsx` *(modified)* | Add "New multiplayer game" button on home screen. |
+| -------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `frontend/src/pages/MultiplayerGamePage.tsx` _(new)_ | Top-level page: fetches state, renders board, handles polling. |
+| `frontend/src/components/WaitingForOpponent.tsx` _(new)_ | Shown when `state === 'waiting'`. Copy-link button + QR code optional. |
+| `frontend/src/components/GameOverPanel.tsx` _(new)_ | Result display, "Play again" link. |
+| `frontend/src/lib/multiplayerClient.ts` _(new)_ | Typed wrappers around all `/multiplayer/*` endpoints. |
+| `frontend/src/hooks/useMultiplayerPolling.ts` _(new)_ | Custom hook: polls every 1.5 s, exposes `{ state, sendMove }`. |
+| `frontend/src/components/Board.tsx` _(modified)_ | Accept `onCellClick` prop; disable when `!yourTurn`. |
+| `frontend/src/App.tsx` _(modified)_ | Add "New multiplayer game" button on home screen. |
 
 Polling protocol:
 
@@ -291,7 +291,7 @@ conversation) as the orchestrator.
   - Pydantic request/response schemas (NOT SQLAlchemy — codebase is asyncpg).
   - `api/app/routers/multiplayer.py` — all six endpoints (§4), each opening
     a connection from the `asyncpg.Pool` injected via `Depends(get_pool)`.
-    Wire the router into `api/app/main.py:80-83` *before* the SPA catch-all
+    Wire the router into `api/app/main.py:80-83` _before_ the SPA catch-all
     block at `main.py:101-106` so production routing isn't shadowed.
   - `api/app/multiplayer/` — `codes.py` (§6), `win_detector.py`
     (~30 LOC port of `gomoku-c/src/gomoku/gomoku.c:149-188`,
@@ -351,11 +351,11 @@ test writer (Stage 2) and implementer (Stage 3) must read this section first.
    The plan's SQL is fine; just wrap it in `op.execute("""…""")`.
 
 1. **Win-detection semantics are wrong / unspecified.** Plan §1 picks
-   "Freestyle" (no overline restriction → 5 *or more* in a row wins). But
+   "Freestyle" (no overline restriction → 5 _or more_ in a row wins). But
    the existing C engine (`gomoku-c/src/gomoku/gomoku.c:180`) uses
    `if (count == 5)` strictly — and `gomoku-c/src/gomoku/ai.c:291` has a
    comment confirming this is intentional. Porting that function gives
-   *Renju-ish* behaviour where 6+ in a row is **not** a win. Decide one of:
+   _Renju-ish_ behaviour where 6+ in a row is **not** a win. Decide one of:
    (a) keep the C semantics and label it "Standard" (not Freestyle), or
    (b) implement `count >= 5` and explicitly diverge. Either way the plan
    must say which. Re-implementing in pure Python is ~30 lines and cheaper
@@ -402,14 +402,14 @@ test writer (Stage 2) and implementer (Stage 3) must read this section first.
 
 1. **API contract gap — guest can't see board_size before joining.**
    §4's `GET /multiplayer/{code}` requires auth. Add: a guest hitting this
-   *before* posting to `/join` should still see `board_size`, `rule_set`,
+   _before_ posting to `/join` should still see `board_size`, `rule_set`,
    `host.username`, `state` (read-only preview). Otherwise the UI can't
    render the join screen. Either expose those fields at all states or add
    `GET /multiplayer/{code}/preview`.
 
 1. **Missing `created_by` audit on the `games` row.** §3 says the
    finished-game row gets `username = winner's username`. For a draw or a
-   loss that means losing the *identity of who lost* in the leaderboard
+   loss that means losing the _identity of who lost_ in the leaderboard
    history. Recommend writing **two** `games` rows on finish (one per
    participant) so each user's `/game/history` shows the game.
 

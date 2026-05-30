@@ -412,9 +412,7 @@ async def join_game(
             # `host_user_id` is a NOT NULL FK to `users`, so the lookup
             # never legitimately returns None — the `or '?'` only narrows
             # the static type for `_build_view(host_username: str)`.
-            host_username = (
-                await mp_db.fetch_username_by_id(conn, str(row.host_user_id))
-            ) or "?"
+            host_username = (await mp_db.fetch_username_by_id(conn, str(row.host_user_id))) or "?"
 
     your_color = _opposite_color(row.host_color.value if row.host_color else "X")
     return _build_view(

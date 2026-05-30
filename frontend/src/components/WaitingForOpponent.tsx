@@ -1,26 +1,26 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useState } from "react";
 
 interface WaitingForOpponentProps {
-  code: string
+  code: string;
 }
 
 export default function WaitingForOpponent({ code }: WaitingForOpponentProps) {
-  const [copied, setCopied] = useState(false)
-  const url = `${window.location.origin}/play/${code}`
+  const [copied, setCopied] = useState(false);
+  const url = `${window.location.origin}/play/${code}`;
 
   const handleCopy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(url)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1800)
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
     } catch {
       // Clipboard API not available — fall back to selecting the input.
       const input = document.getElementById(
-        'mp-share-url',
-      ) as HTMLInputElement | null
-      input?.select()
+        "mp-share-url",
+      ) as HTMLInputElement | null;
+      input?.select();
     }
-  }, [url])
+  }, [url]);
 
   return (
     <div className="w-full max-w-xl rounded-xl border border-neutral-700 bg-neutral-800/80 shadow-xl shadow-black/30 backdrop-blur-sm">
@@ -46,7 +46,7 @@ export default function WaitingForOpponent({ code }: WaitingForOpponentProps) {
             onClick={handleCopy}
             className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-neutral-900 font-semibold transition-colors"
           >
-            {copied ? 'Copied!' : 'Copy link'}
+            {copied ? "Copied!" : "Copy link"}
           </button>
         </div>
         <p className="text-sm text-neutral-500 mt-2">
@@ -54,5 +54,5 @@ export default function WaitingForOpponent({ code }: WaitingForOpponentProps) {
         </p>
       </div>
     </div>
-  )
+  );
 }

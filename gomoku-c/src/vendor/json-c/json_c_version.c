@@ -8,12 +8,6 @@
 
 #include "json_c_version.h"
 
-const char *json_c_version(void)
-{
-	return JSON_C_VERSION;
-}
+const char *json_c_version(void) { return JSON_C_VERSION; }
 
-int json_c_version_num(void)
-{
-	return JSON_C_VERSION_NUM;
-}
+int json_c_version_num(void) { return JSON_C_VERSION_NUM; }

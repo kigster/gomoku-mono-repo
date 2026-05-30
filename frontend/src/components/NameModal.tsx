@@ -1,31 +1,35 @@
-import { useState, useEffect } from 'react'
-import { trackEntered, trackAbandoned } from '../analytics'
+import { useState, useEffect } from "react";
+import { trackEntered, trackAbandoned } from "../analytics";
 
 interface NameModalProps {
-  onSubmit: (name: string) => void
-  currentName?: string
-  onClose?: () => void
+  onSubmit: (name: string) => void;
+  currentName?: string;
+  onClose?: () => void;
 }
 
-export default function NameModal({ onSubmit, currentName, onClose }: NameModalProps) {
-  const [name, setName] = useState(currentName ?? '')
-  const isRename = !!currentName
+export default function NameModal({
+  onSubmit,
+  currentName,
+  onClose,
+}: NameModalProps) {
+  const [name, setName] = useState(currentName ?? "");
+  const isRename = !!currentName;
 
   useEffect(() => {
     if (!isRename) {
-      const handler = () => trackAbandoned()
-      window.addEventListener('beforeunload', handler)
-      return () => window.removeEventListener('beforeunload', handler)
+      const handler = () => trackAbandoned();
+      window.addEventListener("beforeunload", handler);
+      return () => window.removeEventListener("beforeunload", handler);
     }
-  }, [isRename])
+  }, [isRename]);
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     if (name.trim()) {
-      if (!isRename) trackEntered(name.trim())
-      onSubmit(name.trim())
+      if (!isRename) trackEntered(name.trim());
+      onSubmit(name.trim());
     }
-  }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -46,20 +50,29 @@ export default function NameModal({ onSubmit, currentName, onClose }: NameModalP
         )}
         <h2 className="text-2xl font-bold mb-2 text-center text-white">
           {isRename ? (
-            <>Rename <span className="font-heading text-amber-400">Player</span></>
+            <>
+              Rename <span className="font-heading text-amber-400">Player</span>
+            </>
           ) : (
-            <>Welcome to <span className="font-heading text-amber-400">Gomoku</span></>
+            <>
+              Welcome to{" "}
+              <span className="font-heading text-amber-400">Gomoku</span>
+            </>
           )}
         </h2>
-        <p className="text-neutral-400 text-center mb-6" style={{ fontSize: '14pt' }}>
+        <p
+          className="text-neutral-400 text-center mb-6"
+          style={{ fontSize: "14pt" }}
+        >
           {isRename ? (
-            'Enter your new player name below.'
+            "Enter your new player name below."
           ) : (
             <>
               What should we call you?
               <br />
               <span className="text-neutral-500">
-                (just so we can address you properly &mdash; saved locally in your browser)
+                (just so we can address you properly &mdash; saved locally in
+                your browser)
               </span>
             </>
           )}
@@ -67,7 +80,7 @@ export default function NameModal({ onSubmit, currentName, onClose }: NameModalP
         <input
           type="text"
           value={name}
-          onChange={e => setName(e.target.value)}
+          onChange={(e) => setName(e.target.value)}
           placeholder="Your name"
           autoFocus
           className="w-full px-4 py-3 rounded-lg bg-neutral-700 border border-neutral-600
@@ -93,10 +106,10 @@ export default function NameModal({ onSubmit, currentName, onClose }: NameModalP
                        bg-amber-600 hover:bg-amber-500 disabled:bg-neutral-600
                        disabled:text-neutral-400 transition-colors"
           >
-            {isRename ? 'Save' : 'Continue'}
+            {isRename ? "Save" : "Continue"}
           </button>
         </div>
       </form>
     </div>
-  )
+  );
 }

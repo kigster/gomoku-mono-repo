@@ -18,7 +18,7 @@ orchestrated from a single root `justfile`.
 ## Sub-systems
 
 | Path | What it builds | Notes |
-|------|----------------|-------|
+| -------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `gomoku-c/` | `gomoku` (TUI), `gomoku-httpd`, `gomoku-http-test` | C engine + daemon; built via `make` |
 | `gomoku-httpd-rust/` | `gomoku-httpd-rust` | Rust port of the daemon; release binary copied to `./bin/` |
 | `api/` | FastAPI server | Python 3.14, asyncpg (no SQLAlchemy), Alembic migrations, proxies AI moves to `gomoku-httpd[-rust]` |
@@ -120,8 +120,8 @@ underpins it lives in [`/reference/`](reference).
 - Append `.done` to the directory name once the feature is shipped (code
   in `main`, behaviour verified in the browser). The slug never changes.
 
-Reference docs that explain *how something works* rather than *what we're
-building next* go in `reference/`, using the same kebab-case convention
+Reference docs that explain _how something works_ rather than _what we're
+building next_ go in `reference/`, using the same kebab-case convention
 without a numeric prefix.
 
 ### Authoring loop
@@ -291,7 +291,7 @@ ______________________________________________________________________
 - **Never use `git push --force`** — always use `git push --force-with-lease` so you don't overwrite someone else's work on the same branch.
 - **PR base branch:** always `main` unless the user explicitly says otherwise.
 - **Merge-base for diffs:** local `main` is often stale, especially in worktrees. Use `git diff $(git merge-base HEAD origin/main)...HEAD` instead of `git diff main` for branch-vs-base comparisons.
-- **Commit messages:** subject ≤ 50 chars, imperative mood ("add" not "added"), no trailing period. Body explains *why* at ≤ 75 columns. Keep commits atomic — one logical change each.
+- **Commit messages:** subject ≤ 50 chars, imperative mood ("add" not "added"), no trailing period. Body explains _why_ at ≤ 75 columns. Keep commits atomic — one logical change each.
 
 ## 🧹 Context Hygiene
 

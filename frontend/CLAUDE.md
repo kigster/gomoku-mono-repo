@@ -16,7 +16,7 @@ React App → FastAPI → gomoku-httpd (for AI moves)
 ### API Endpoints Used
 
 | Path | Purpose |
-|---|---|
+| ----------------------------------- | ------------------------------------ |
 | `POST /auth/signup` | Create account |
 | `POST /auth/login` | Login, returns JWT |
 | `POST /auth/password-reset` | Request password reset email |
@@ -31,7 +31,7 @@ React App → FastAPI → gomoku-httpd (for AI moves)
 ### Environment Variables
 
 | Variable | Default | Purpose |
-|---|---|---|
+| --------------- | ------------------ | ---------------------------------------------------------------------------- |
 | `VITE_API_BASE` | `""` (same-origin) | API base URL. Leave empty for dev (vite proxy) and production (nginx proxy). |
 
 ## Development
@@ -70,7 +70,7 @@ docker run -p 80:80 -e API_URL=http://gomoku-api:8000 gomoku-frontend:latest
 ## Multiplayer endpoints used
 
 | Path | Purpose |
-|---|---|
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
 | `POST /multiplayer/new` | Create an invite — `host_color: null` defers color choice to the guest |
 | `POST /multiplayer/{c}/join` | Join — `chosen_color` required when host deferred |
 | `POST /multiplayer/{c}/cancel` | Host marks the game `cancelled` (used by the modal close flow) |
@@ -81,16 +81,16 @@ docker run -p 80:80 -e API_URL=http://gomoku-api:8000 gomoku-frontend:latest
 ## Auth Flow
 
 1. First visit → AuthModal (Sign Up tab)
-2. User creates account → JWT stored in localStorage
-3. Subsequent visits → JWT read from localStorage, game UI loads
-4. `?token=...` in URL → password reset view
-5. Log Out → clears localStorage, shows AuthModal
+1. User creates account → JWT stored in localStorage
+1. Subsequent visits → JWT read from localStorage, game UI loads
+1. `?token=...` in URL → password reset view
+1. Log Out → clears localStorage, shows AuthModal
 
 ## Game Flow
 
 1. User clicks Start Game → `POST /game/start` (increment counter)
-2. Human places stone → `POST /game/play` with full game JSON
-3. FastAPI proxies to gomoku-httpd → AI move returned
-4. Repeat until win/draw
-5. Game over → `POST /game/save` with game JSON → score calculated and stored
-6. Green/red alert shows result and score
+1. Human places stone → `POST /game/play` with full game JSON
+1. FastAPI proxies to gomoku-httpd → AI move returned
+1. Repeat until win/draw
+1. Game over → `POST /game/save` with game JSON → score calculated and stored
+1. Green/red alert shows result and score

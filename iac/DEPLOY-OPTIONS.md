@@ -4,33 +4,33 @@ A walk-through of the cheapest ways to host this game so it can scale on
 demand, with a special eye toward the **single-threaded C engine** (which is
 what makes this app interesting to deploy).
 
----
+______________________________________________________________________
 
 ## 1. What we are actually deploying
 
 Three logical components, plus a database:
 
-| Component        | Language    | Concurrency model                                        | CPU profile                                |
-| ---------------- | ----------- | -------------------------------------------------------- | ------------------------------------------ |
-| `frontend`       | React + Vite (static) | served as static files                          | none — bundled into the API image          |
-| `gomoku-api`     | FastAPI / Python (async) | concurrency 80+ per process                  | mostly I/O-bound (DB, httpx)               |
-| `gomoku-httpd`   | C, **single-threaded**, **single-request** | one request per process at a time | CPU-bound, 50 ms – 5 s per move (depth 2–5) |
-| Postgres         | external    | connection-pooled                                        | tiny — see §3                              |
+| Component | Language | Concurrency model | CPU profile |
+| -------------- | ------------------------------------------ | --------------------------------- | ------------------------------------------- |
+| `frontend` | React + Vite (static) | served as static files | none — bundled into the API image |
+| `gomoku-api` | FastAPI / Python (async) | concurrency 80+ per process | mostly I/O-bound (DB, httpx) |
+| `gomoku-httpd` | C, **single-threaded**, **single-request** | one request per process at a time | CPU-bound, 50 ms – 5 s per move (depth 2–5) |
+| Postgres | external | connection-pooled | tiny — see §3 |
 
 The headache is `gomoku-httpd`. It pegs one core for the duration of a search
 and refuses any second request. Whatever we deploy on must be able to:
 
-1.  **Fan out** requests across N worker processes, each on its own core,
-2.  **Queue** inbound requests when all N workers are busy (so a 200 ms wait
-    looks like latency, not a 503), and
-3.  **Scale** N up/down with traffic, ideally cheaply when idle.
+1. **Fan out** requests across N worker processes, each on its own core,
+1. **Queue** inbound requests when all N workers are busy (so a 200 ms wait
+   looks like latency, not a 503), and
+1. **Scale** N up/down with traffic, ideally cheaply when idle.
 
 This is exactly the role envoy/haproxy/kamal-proxy plays. Cloud Run technically
 fans out (it spins a new instance per concurrent request when concurrency=1),
 but it does **not** queue — once the per-region instance cap is hit, callers
 get 429s. That is the architectural gap you correctly flagged.
 
----
+______________________________________________________________________
 
 ## 2. Architecture (target)
 
@@ -68,7 +68,7 @@ Why a dedicated proxy in front of `gomoku-httpd`:
 The same proxy can sit in front of `gomoku-api` to give it a queue too, but
 FastAPI is async and rarely the bottleneck.
 
----
+______________________________________________________________________
 
 ## 3. Scalability sizing — does the math actually require autoscale?
 
@@ -79,9 +79,9 @@ default settings (depth 3, radius 2) finishes in **~150 ms** on a Cloud Run
 
 | Concurrent players | req/s to httpd | Workers needed (Erlang C, 95 %ile < 1 s) | Workers needed (worst case, depth 5 ≈ 3 s) |
 | -----------------: | -------------: | ---------------------------------------: | -----------------------------------------: |
-|                100 |              5 |                                        2 |                                         16 |
-|              1 000 |             50 |                                       10 |                                         60 |
-|             10 000 |            500 |                                       80 |                                        500 |
+| 100 | 5 | 2 | 16 |
+| 1 000 | 50 | 10 | 60 |
+| 10 000 | 500 | 80 | 500 |
 
 **Database load at 1 000 concurrent players:**
 
@@ -101,7 +101,7 @@ concurrent players (after a launch / blog post), not 10 000. So the question
 is "what costs $0 when nobody is playing and degrades gracefully under a
 Hacker News hug?", not "what scales to a million users."
 
----
+______________________________________________________________________
 
 ## 4. The contenders
 
@@ -135,12 +135,12 @@ api → envoy(:8787) → httpd(:9001..9008)   # all in one Cloud Run service
 
 **Costs**
 
-|             | Idle | 100 concurrent | 1 000 concurrent |
-| ----------- | ---: | -------------: | ---------------: |
-| Cloud Run   |   $0 |         ~$5/mo |         ~$80/mo  |
-| Neon Postgres | $0 |       $0       |       ~$19/mo    |
-| Egress      |   $0 |         ~$1    |         ~$10     |
-| **Total**   |  $0  |        ~$6     |         ~$110    |
+| | Idle | 100 concurrent | 1 000 concurrent |
+| ------------- | ---: | -------------: | ---------------: |
+| Cloud Run | $0 | ~$5/mo | ~$80/mo |
+| Neon Postgres | $0 | $0 | ~$19/mo |
+| Egress | $0 | ~$1 | ~$10 |
+| **Total** | $0 | ~$6 | ~$110 |
 
 ### Option B — Hetzner Cloud + Kamal
 
@@ -170,12 +170,12 @@ boxes are absurdly cheap and the C build cross-compiles to arm64 trivially.
 
 **Costs (CAX21, 4 vCPU / 8 GB ARM):**
 
-|             | Idle | 100 concurrent | 1 000 concurrent             |
-| ----------- | ---: | -------------: | ---------------------------: |
-| Hetzner VM  | €7.5 |    €7.5        | €30 (CAX41, 16 vCPU)         |
-| Postgres    |  $0  |     $0         | included on same box         |
-| Egress      |   €0 |     €0 (20 TB free) | €0                      |
-| **Total**   | €7.5 |    €7.5        | ~€30                         |
+| | Idle | 100 concurrent | 1 000 concurrent |
+| ---------- | ---: | --------------: | -------------------: |
+| Hetzner VM | €7.5 | €7.5 | €30 (CAX41, 16 vCPU) |
+| Postgres | $0 | $0 | included on same box |
+| Egress | €0 | €0 (20 TB free) | €0 |
+| **Total** | €7.5 | €7.5 | ~€30 |
 
 ### Option C — Hetzner + plain docker-compose + Caddy
 
@@ -212,11 +212,11 @@ machine at concurrency=1 will not get a second request — fly buffers it.
 
 **Costs:**
 
-|             | Idle | 100 concurrent | 1 000 concurrent |
-| ----------- | ---: | -------------: | ---------------: |
-| Fly machines | $0  |     ~$5/mo     |     ~$60/mo      |
-| Postgres    |  $0  |    ~$5/mo      |    ~$25/mo       |
-| **Total**   | $0   |    ~$10/mo     |    ~$85/mo       |
+| | Idle | 100 concurrent | 1 000 concurrent |
+| ------------ | ---: | -------------: | ---------------: |
+| Fly machines | $0 | ~$5/mo | ~$60/mo |
+| Postgres | $0 | ~$5/mo | ~$25/mo |
+| **Total** | $0 | ~$10/mo | ~$85/mo |
 
 ### Option E — Hetzner + k3s (lightweight Kubernetes)
 
@@ -235,39 +235,39 @@ might genuinely be the deciding factor — call it.)
 
 **Costs:** same as Option B/C (~€8–€30/mo).
 
----
+______________________________________________________________________
 
 ## 5. Database recommendation
 
 DB sizing (§3) shows we are nowhere near needing managed Postgres beefier
 than free tier. The four sane choices, ranked:
 
-1.  **Neon free tier** — keep it. 0.5 GB / 190 compute hours. Re-evaluate at
-    1 k DAU.
-2.  **Postgres on the same VM** (Option B/C/E) — `pg_basebackup` to a daily
-    Hetzner storage box for $1/mo. Zero ops if you accept that.
-3.  **Supabase free tier** — like Neon but with auth/storage you might want
-    later. Not worth migrating today.
-4.  **SQLite + Litestream** — genuinely viable here. Game data is tiny,
-    single-writer is fine because all writes go through one `gomoku-api`
-    cluster. Litestream replicates to S3-compatible storage. Zero $ DB.
-    Caveat: leaderboards on SQLite are fine to ~1 M games.
+1. **Neon free tier** — keep it. 0.5 GB / 190 compute hours. Re-evaluate at
+   1 k DAU.
+1. **Postgres on the same VM** (Option B/C/E) — `pg_basebackup` to a daily
+   Hetzner storage box for $1/mo. Zero ops if you accept that.
+1. **Supabase free tier** — like Neon but with auth/storage you might want
+   later. Not worth migrating today.
+1. **SQLite + Litestream** — genuinely viable here. Game data is tiny,
+   single-writer is fine because all writes go through one `gomoku-api`
+   cluster. Litestream replicates to S3-compatible storage. Zero $ DB.
+   Caveat: leaderboards on SQLite are fine to ~1 M games.
 
 I would not bother migrating off Neon until something forces it.
 
----
+______________________________________________________________________
 
 ## 6. Cost summary at a glance
 
-|                              |  Idle |  100 players | 1 000 players | Ops effort |
-| ---------------------------- | ----: | -----------: | ------------: | ---------- |
-| A. Cloud Run (current + envoy multi-container) | $0    | ~$6/mo       | ~$110/mo     | low        |
-| B. Hetzner + Kamal           | €7.5  | €7.5/mo      | ~€30/mo      | low–medium |
-| C. Hetzner + docker-compose  | €7.5  | €7.5/mo      | ~€30/mo      | low        |
-| D. Fly.io                    | $0    | ~$10/mo      | ~$85/mo      | low        |
-| E. Hetzner + k3s             | €7.5  | €7.5/mo      | ~€30/mo      | high       |
+| | Idle | 100 players | 1 000 players | Ops effort |
+| ---------------------------------------------- | ---: | ----------: | ------------: | ---------- |
+| A. Cloud Run (current + envoy multi-container) | $0 | ~$6/mo | ~$110/mo | low |
+| B. Hetzner + Kamal | €7.5 | €7.5/mo | ~€30/mo | low–medium |
+| C. Hetzner + docker-compose | €7.5 | €7.5/mo | ~€30/mo | low |
+| D. Fly.io | $0 | ~$10/mo | ~$85/mo | low |
+| E. Hetzner + k3s | €7.5 | €7.5/mo | ~€30/mo | high |
 
----
+______________________________________________________________________
 
 ## 7. Recommendation
 
@@ -275,11 +275,11 @@ I would not bother migrating off Neon until something forces it.
 as a sidecar to `gomoku-httpd`.** It is the smallest delta from where you are.
 Two concrete changes:
 
-1.  Add a multi-container Cloud Run service `gomoku-engine` containing
-    `envoy` (port 8787, public-internal) + 4× `gomoku-httpd` (ports
-    9001–9004, localhost). Keep concurrency=N (N=4) at the Cloud Run level,
-    let envoy distribute internally with LEAST_REQUEST.
-2.  Point `gomoku-api`'s `GOMOKU_HTTPD_URL` at the new service.
+1. Add a multi-container Cloud Run service `gomoku-engine` containing
+   `envoy` (port 8787, public-internal) + 4× `gomoku-httpd` (ports
+   9001–9004, localhost). Keep concurrency=N (N=4) at the Cloud Run level,
+   let envoy distribute internally with LEAST_REQUEST.
+1. Point `gomoku-api`'s `GOMOKU_HTTPD_URL` at the new service.
 
 You keep scale-to-zero, you fix the queuing problem, the Terraform diff is
 ~80 lines, and you don't change the front-of-house at all.
@@ -293,16 +293,16 @@ is already containerised.
 **Skip for now:** Fly.io (no big advantage over Cloud Run for your traffic),
 k3s (resume value only), full GKE (10× the cost).
 
----
+______________________________________________________________________
 
 ## 8. Open questions before committing
 
 1. Is `gomoku.games` apex going to point at this directly, or stay on
    `app.gomoku.games`? Apex DNS shapes Option B/C (need an A record, not a
    CNAME). Cloud Run handles both.
-2. How married are we to GCP for the rest of `agentica.group` /
+1. How married are we to GCP for the rest of `agentica.group` /
    `qualified.at`? If those end up on Hetzner, consolidation argues for B.
-3. Is the goal "cheap and stable" or "interview-talking-point"? Option A is
+1. Is the goal "cheap and stable" or "interview-talking-point"? Option A is
    the former, Option E is the latter. Pick one consciously.
-4. Do we want CI to deploy on push? Cloud Run + GitHub Actions is one YAML
+1. Do we want CI to deploy on push? Cloud Run + GitHub Actions is one YAML
    file; Kamal + GHA is also one YAML file; k3s is a small adventure.

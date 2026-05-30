@@ -1,12 +1,15 @@
----
+______________________________________________________________________
+
 name: nginx-configuration
 description: Configure Nginx web server for high-performance reverse proxy, load balancing, SSL/TLS, caching, and API gateway functionality. Master production deployments, security headers, and monitoring.
 allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Bash
----
+
+- Read
+- Write
+- Edit
+- Bash
+
+______________________________________________________________________
 
 # Nginx Configuration
 
@@ -298,6 +301,7 @@ server {
 ## Best Practices
 
 ### ✅ DO
+
 - Use HTTP/2 for performance
 - Enable SSL/TLS with strong ciphers
 - Implement proper caching strategies
@@ -309,6 +313,7 @@ server {
 - Keep error logs separate from access logs
 
 ### ❌ DON'T
+
 - Disable gzip compression
 - Use weak SSL ciphers
 - Cache authenticated responses

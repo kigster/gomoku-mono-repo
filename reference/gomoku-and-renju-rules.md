@@ -10,7 +10,7 @@ ______________________________________________________________________
 
 ### 1. Overview
 
-**Gomoku** (五目並べ, *gomokunarabe*) is an abstract strategy board game for two players, also known as "Five in a Row." Originating in China as **Wu Zi Qi** (五子棋), the game spread to Japan, Korea (where it is called **Omok**, 오목), and eventually worldwide. In some countries it is informally known as "crosses and noughts."
+**Gomoku** (五目並べ, _gomokunarabe_) is an abstract strategy board game for two players, also known as "Five in a Row." Originating in China as **Wu Zi Qi** (五子棋), the game spread to Japan, Korea (where it is called **Omok**, 오목), and eventually worldwide. In some countries it is informally known as "crosses and noughts."
 
 **Renju** is the professional, tournament-grade evolution of Gomoku, developed by Japanese masters approximately 100 years ago. It adds restrictions on Black's play to counterbalance the significant first-player advantage discovered in unrestricted Gomoku.
 
@@ -23,20 +23,20 @@ ______________________________________________________________________
 #### Board
 
 | Property | Standard | Notes |
-|----------------|-------------------|------------------------------------|
-| Material | Wood (traditional)| Any flat surface with grid |
+| ---------------- | ----------------------------- | ------------------------------------------------------ |
+| Material | Wood (traditional) | Any flat surface with grid |
 | Grid size | **15 x 15** | Standard for Renju and tournament Gomoku |
 | Alternate size | 19 x 19 | Traditional (historical), used in some Gomoku variants |
-| Reference points| 5 marked intersections | Center + 4 star points |
+| Reference points | 5 marked intersections | Center + 4 star points |
 | Color | Must differ from stone colors | Typically light wood |
 
 #### Stones
 
 | Property | Description |
-|----------|------------------------------------------------|
+| --------- | ----------------------------------------------------------- |
 | Colors | Black and White |
 | Material | Plastic, glass, or ceramic (traditional: slate & clamshell) |
-| Placement| **On intersections**, not inside squares |
+| Placement | **On intersections**, not inside squares |
 
 #### Time Control
 
@@ -69,7 +69,7 @@ An unbroken row of exactly five stones. This is the **winning condition**.
 An unbroken row of **six or more** stones. Treatment varies by variant:
 
 | Variant | Overline Rule |
-|------------------|----------------------------------------|
+| ---------------- | ---------------------------------- |
 | Freestyle Gomoku | Counts as a win |
 | Standard Gomoku | Does **not** count; game continues |
 | Renju (Black) | **Forbidden** — Black loses |
@@ -104,7 +104,7 @@ An **open three** is dangerous because it leads to an open four, which is effect
 A **fork** is a single move that creates two simultaneous threats. Fork types:
 
 | Fork Type | Notation | Description | Winning? |
-|-----------|----------|-------------|----------|
+| ------------ | -------- | -------------------------------------- | -------------------------------------------------- |
 | Double Four | 4×4 | Creates two fours simultaneously | Yes — cannot block both |
 | Four-Three | 4×3 | Creates one four and one open three | Yes — must block the four, three becomes open four |
 | Double Three | 3×3 | Creates two open threes simultaneously | Yes — blocking one leaves the other |
@@ -122,7 +122,7 @@ ______________________________________________________________________
 The simplest form with **no restrictions** on either player.
 
 | Rule | Detail |
-|---------------------|-------------------------------------------|
+| ------------- | -------------------------------- |
 | Board | 15×15 (or 19×19) |
 | First player | Black |
 | Win condition | Five **or more** stones in a row |
@@ -139,7 +139,7 @@ ______________________________________________________________________
 Adds the overline restriction to Freestyle.
 
 | Rule | Detail |
-|---------------------|-------------------------------------------|
+| ------------- | --------------------------------- |
 | Board | 15×15 |
 | First player | Black |
 | Win condition | **Exactly** five stones in a row |
@@ -154,7 +154,7 @@ ______________________________________________________________________
 An opening rule that restricts the first three moves to reduce Black's advantage.
 
 | Rule | Detail |
-|---------------------|-------------------------------------------|
+| -------------- | ------------------------------------------------------------------ |
 | Board | 15×15 |
 | Win condition | Exactly five in a row (overlines don't count) |
 | Move 1 (Black) | **Must** be placed at the center (H8) |
@@ -185,7 +185,7 @@ The PRO opening constrains the first three moves to balance the game:
   1  . . . . . . . . . . . . . . .
 ```
 
-*There is also a **Long Pro** variant where the third stone must be at least **4** intersections from center.*
+_There is also a **Long Pro** variant where the third stone must be at least **4** intersections from center._
 
 ![Gomoku Pro Opening](../.features/img/pro.jpg)
 
@@ -196,7 +196,7 @@ ______________________________________________________________________
 Uses the "pie rule" to balance the opening.
 
 | Rule | Detail |
-|---------------------|-------------------------------------------|
+| ------------- | --------------------------------------------- |
 | Board | 15×15 |
 | Win condition | Exactly five in a row (overlines don't count) |
 | Opening | See procedure below |
@@ -237,7 +237,7 @@ ______________________________________________________________________
 The **official tournament rule** for Gomoku World Championships since 2009. An extension of Swap with more options for the second player.
 
 | Rule | Detail |
-|---------------------|-------------------------------------------|
+| ------------- | --------------------------------------------- |
 | Board | 15×15 |
 | Win condition | Exactly five in a row (overlines don't count) |
 | Opening | See procedure below |
@@ -280,7 +280,7 @@ ______________________________________________________________________
 A variant popular in Vietnam, also known as **Gomoku+**.
 
 | Rule | Detail |
-|---------------------|-------------------------------------------|
+| ------------- | --------------------------------------------------------------- |
 | Board | 15×15 (or 19×19) |
 | First player | Black |
 | Win condition | Exactly five in a row, but **must not be blocked at both ends** |
@@ -302,7 +302,7 @@ ______________________________________________________________________
 The Korean variant of Standard Gomoku.
 
 | Rule | Detail |
-|---------------------|-------------------------------------------|
+| --------------------- | ----------------------------------------------------------------------------- |
 | Board | 15×15 |
 | Win condition | Exactly five in a row (overlines don't count) |
 | Restrictions | **Three-and-three** rule applies (cannot form two open threes simultaneously) |
@@ -315,11 +315,11 @@ ______________________________________________________________________
 A variant that adds **capturing** to the game. Published in the USA as **Pente**.
 
 | Rule | Detail |
-|---------------------|-------------------------------------------|
+| --------------------------- | ---------------------------------------------------------------------------------- |
 | Board | 19×19 (Pente) or 15×15 (Ninuki-Renju) |
 | Win condition | Five in a row **OR** capture 10 opponent stones |
 | Capturing | **Custodial capture**: surround exactly 2 opponent stones in a line to remove them |
-| Restrictions (Pente)| None (no three-and-three or overline rules) |
+| Restrictions (Pente) | None (no three-and-three or overline rules) |
 | Restrictions (Ninuki-Renju) | May include Renju-style forbidden moves |
 
 ##### Capturing Example
@@ -338,7 +338,7 @@ ______________________________________________________________________
 A modern variant designed for better balance.
 
 | Rule | Detail |
-|---------------------|-------------------------------------------|
+| --------------- | ------------------------------------------------------------------------ |
 | Board | 19×19 |
 | Win condition | **Six** stones in a row |
 | Stones per turn | Black plays 1 stone first, then each player places **2 stones per turn** |
@@ -356,7 +356,7 @@ ______________________________________________________________________
 Renju was developed from Gomoku by Japanese masters approximately 100 years ago to address the proven first-player (Black) advantage. It adds **three restrictions on Black only**, while White plays without restrictions.
 
 | Rule Aspect | Gomoku (Standard) | Renju |
-|---------------|--------------------|------------------------------------|
+| ------------- | ---------------------------- | --------------------------------------------------------------- |
 | Overlines | Don't count (game continues) | **Forbidden for Black** (Black loses); White wins with overline |
 | Double-four | Allowed | **Forbidden for Black** (Black loses) |
 | Double-three | Allowed | **Forbidden for Black** (Black loses, with exceptions) |
@@ -462,7 +462,7 @@ ______________________________________________________________________
 #### 5.4 Win Conditions
 
 | Condition | Black | White |
-|-----------|-------|-------|
+| ----------------------------- | --------------------- | ----- |
 | Five in a row | Wins | Wins |
 | Overline | **Loses** (forbidden) | Wins |
 | Opponent makes forbidden move | Wins (if claimed) | N/A |
@@ -526,7 +526,7 @@ The second stone (White) is placed **diagonally** from the center stone.
 ```
 
 | # | Name | # | Name |
-|---|------------|---|------------|
+| --- | ------------ | --- | ------------ |
 | 1 | **Chosei** | 8 | **Rangetsu** |
 | 2 | **Kyogetsu** | 9 | **Gingetsu** |
 | 3 | **Kosei** | 10 | **Myojo** |
@@ -548,10 +548,10 @@ The second stone (White) is placed **vertically** (or horizontally) adjacent to 
 ```
 
 | # | Name | # | Name |
-|---|------------|---|------------|
+| --- | ------------ | --- | ------------- |
 | 1 | **Kansei** | 8 | **Shogetsu** |
 | 2 | **Keigetsu** | 9 | **Kyugetsu** |
-| 3 | **Sosei** | 10 | **Shingetsu**|
+| 3 | **Sosei** | 10 | **Shingetsu** |
 | 4 | **Kagetsu** | 11 | **Zuigetsu** |
 | 5 | **Zangetsu** | 12 | **Sangetsu** |
 | 6 | **Ugetsu** | 13 | **Yusei** |
@@ -566,7 +566,7 @@ ______________________________________________________________________
 The original opening procedure defined by the Renju International Federation (1996):
 
 | Step | Action |
-|------|--------|
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | 1 | A tentative Black and tentative White are decided. |
 | 2 | Tentative Black plays the first 3 moves (choosing one of the 26 openings). |
 | 3 | Tentative White may **swap colors** with Black. |
@@ -584,7 +584,7 @@ ______________________________________________________________________
 Developed by Japanese player Yusui Yamaguchi (~2008). Used for RIF World Championships from 2009 to 2015.
 
 | Step | Action |
-|------|--------|
+| ---- | ---------------------------------------------------------------------------------------------------------------- |
 | 1 | Black selects one of the 26 openings and **declares** how many 5th-move options will be offered (typically 1-3). |
 | 2 | White may **swap colors**. |
 | 3 | White places the 4th stone freely anywhere on the board. |
@@ -601,7 +601,7 @@ ______________________________________________________________________
 Named after Estonian village Soosyrv. Official for RIF World Championships 2017-2023.
 
 | Step | Action |
-|------|--------|
+| ---- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | 1 | The first player places one of the 26 openings (first 3 stones). |
 | 2 | The second player may **swap colors**. |
 | 3 | White places the 4th stone **anywhere** on the board and **declares** how many 5th-move options will be offered (between **1 and 8**). |
@@ -619,7 +619,7 @@ ______________________________________________________________________
 The current official rule for RIF World Championships as of 2024.
 
 | Step | Action |
-|------|--------|
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1 | Black places the 1st stone at the **center** of the board. |
 | 2 | The other player may **swap**. |
 | 3 | White places the 2nd stone within the **3×3 central square**. |
@@ -671,7 +671,7 @@ ______________________________________________________________________
 #### Opening Rules Summary Timeline
 
 | Period | Gomoku Championship Rule | Renju Championship Rule |
-|------------|--------------------------|-------------------------|
+| --------- | ------------------------ | ----------------------- |
 | 1989-2007 | Various / Swap | RIF Classic |
 | 2009-2015 | Swap2 | Yamaguchi |
 | 2017-2023 | Swap2 | Soosyrv-8 |
@@ -709,7 +709,7 @@ Research by **L. Victor Allis** (1994) proved computationally that **Black wins 
 This fundamental imbalance is the reason all serious variants employ opening restrictions:
 
 | Approach | Used In | Effectiveness |
-|------------------------|-----------------------|------------------------|
+| ----------------------------------- | ---------------------- | ------------------------- |
 | Move placement restrictions | Pro, Long Pro | Moderate |
 | Color swap (pie rule) | Swap, Swap2 | Good |
 | Forbidden moves | Renju | Strong |
@@ -724,7 +724,7 @@ ______________________________________________________________________
 ### 9. Glossary
 
 | Term | Definition |
-|------|------------|
+| ----------------------------- | ---------------------------------------------------------------------------------- |
 | **Five in a row** | An unbroken line of exactly 5 same-colored stones — the winning condition |
 | **Overline** | An unbroken line of 6+ stones; treatment varies by variant |
 | **Open three** | A three that can become an open four (straight four) in one move |
@@ -747,7 +747,7 @@ ______________________________________________________________________
 
 ______________________________________________________________________
 
-*Document generated from authoritative sources. For official tournament rules, consult the [Renju International Federation](https://www.renju.net/rifrules/).*
+_Document generated from authoritative sources. For official tournament rules, consult the [Renju International Federation](https://www.renju.net/rifrules/)._
 
 ______________________________________________________________________
 
@@ -758,7 +758,7 @@ ______________________________________________________________________
 Based on popularity, tournament use, and implementation complexity, here are the variants ranked by priority:
 
 | Priority | Variant ID | Name | Rationale |
-|----------|------------------|-------------------------|-----------|
+| -------- | ----------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1 | `standard` | Standard Gomoku | **Default.** Exactly 5 wins, overlines don't count. This is what the engine already does. Most widely played casual variant worldwide. |
 | 2 | `freestyle` | Freestyle Gomoku | Simplest change — 5+ in a row wins. Very popular online. |
 | 3 | `renju` | Renju | Professional tournament variant. Adds forbidden moves (3×3, 4×4, overline) for Black only. High complexity to implement but highly prestigious. |
@@ -859,9 +859,7 @@ Add to the root properties in `config/gomoku-json-schema.json`:
   "radius": 2,
   "timeout": "none",
   "winner": "none",
-  "moves": [
-    { "X (human)": "H8", "time_ms": 1200.0 }
-  ]
+  "moves": [{ "X (human)": "H8", "time_ms": 1200.0 }]
 }
 ```
 
@@ -874,7 +872,7 @@ ______________________________________________________________________
 ### Rule Matrix by Variant
 
 | Rule | standard | freestyle | renju | caro | omok | ninuki |
-|---------------------------|----------|-----------|-------------|----------|----------|----------|
+| ----------------- | -------- | --------- | ----------------------- | ----- | ---- | ------------- |
 | Board size | 15/19 | 15/19 | 15 | 15/19 | 15 | 15/19 |
 | Win count | =5 | >=5 | =5 | =5 | =5 | =5 or capture |
 | Overline counts | No | Yes | Black: lose, White: win | No | No | No |
@@ -962,7 +960,7 @@ ______________________________________________________________________
 ### Files Requiring Changes
 
 | File | Change |
-|------|--------|
+| -------------------------------- | ------------------------------------------------------------ |
 | `gomoku-c/src/gomoku/gomoku.h` | Add `game_type_t` enum |
 | `gomoku-c/src/gomoku/cli.h` | Add `game_type` to `cli_config_t` |
 | `gomoku-c/src/gomoku/cli.c` | Parse `-g` flag, add to help text |
@@ -982,7 +980,7 @@ ______________________________________________________________________
 Two bugs were found and fixed in `gomoku-c/src/gomoku/game.c`:
 
 | Bug | Before | After |
-|-----|--------|-------|
+| ------------------- | ----------------------- | ---------------------------------------- |
 | Field name mismatch | `"board": 15` | `"board_size": 15` (matches schema) |
 | Type mismatch | `"undo": "on"` (string) | `"undo": true` (boolean, matches schema) |
 

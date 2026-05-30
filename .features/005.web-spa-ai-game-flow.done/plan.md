@@ -33,7 +33,7 @@ The Settings panel exposes three knobs. They map directly onto the
 engine's CLI flags ([doc/01-human-vs-ai-tui.md](../004.terminal-ai-game-binary.done/plan.md)):
 
 | Setting | Range | What it does |
-|---|---|---|
+| -------------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **AI Search Depth** | 2–5 | How many plies of alpha-beta look-ahead. Each extra ply roughly squares the work the engine does. Depth 2 is "novice", depth 5 is "competent club player". The TUI binary supports up to 10; the web flow caps at 5 so a single move never exceeds the per-move budget on a Cloud Run worker. |
 | **AI Search Radius** | 1–4 | Distance (in board cells) around existing stones the candidate-move generator considers. Radius 1 only looks at adjacent intersections (myopic); radius 4 considers far-jump setups but searches many more candidates. Default 3 is balanced. |
 | **AI Timeout** | none / 30 / 60 / 120 / 300 s | Wall-clock cap per AI move. When the clock fires the engine returns its best move so far. With no timeout, depth controls everything. |
@@ -107,7 +107,7 @@ Drop it back into `bin/gomoku -p FILE` to replay.
 ## API endpoints used
 
 | Path | Purpose |
-|---|---|
+| ------------------- | ---------------------------------------------- |
 | `POST /auth/signup` | Create account |
 | `POST /auth/login` | Login, returns JWT |
 | `POST /game/start` | Increment the user's started-games counter |

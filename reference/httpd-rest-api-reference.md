@@ -74,7 +74,7 @@ The daemon runs as a foreground process by default. Use `-d` to daemonize.
 ### CLI Options
 
 | Flag | Long Form | Description | Default |
-|------|-----------|-------------|---------|
+| ---- | -------------- | ------------------------------------------------- | -------- |
 | `-b` | `--bind` | Host and port to bind (required) | - |
 | `-a` | `--agent-port` | HAProxy agent-check port | disabled |
 | `-d` | `--daemonize` | Run as background daemon | No |
@@ -219,7 +219,7 @@ flowchart LR
 ### How Envoy Differs from HAProxy
 
 | Feature | HAProxy | Envoy |
-|---------|---------|-------|
+| --------------- | --------------------------------- | ---------------------------------------------- |
 | Health Check | TCP agent-check (`drain`/`ready`) | HTTP `GET /ready` (200 vs 503) |
 | Request Queue | Limited (via `maxconn`) | Circuit breaker (`max_pending_requests: 1000`) |
 | Retry Policy | Manual configuration | Built-in with exponential backoff |
@@ -299,7 +299,7 @@ Health check endpoint.
 ### Error Responses
 
 | Status | Description |
-|--------|-------------|
+| ------ | ----------------------------------------------------- |
 | 400 | Bad Request - Invalid JSON or missing required fields |
 | 404 | Not Found - Unknown endpoint |
 | 405 | Method Not Allowed - Wrong HTTP method |
@@ -355,7 +355,7 @@ The game state JSON format:
 ### Field Descriptions
 
 | Field | Type | Description |
-|-------|------|-------------|
+| ------------- | ------ | --------------------------------------------------- |
 | `X` | object | Player X configuration |
 | `X.player` | string | "human" or "AI" |
 | `X.depth` | int | AI search depth (1-6, only if AI) |
@@ -433,7 +433,7 @@ curl http://127.0.0.1:3000/health
 Output:
 
 ```json
-{"status":"ok","version":"1.0.0","uptime":"5m 30s"}
+{ "status": "ok", "version": "1.0.0", "uptime": "5m 30s" }
 ```
 
 ### Test Different AI Depths
@@ -471,7 +471,7 @@ The client plays as X (human) using a simple spiral strategy while the server's 
 ### Test Client Options
 
 | Flag | Long Form | Description | Default |
-|------|-----------|-------------|---------|
+| ---- | ----------- | ------------------------------------ | --------- |
 | `-h` | `--host` | Server host | 127.0.0.1 |
 | `-p` | `--port` | Server port | 9900 |
 | `-d` | `--depth` | AI search depth (1-6) | 2 |
@@ -573,7 +573,7 @@ The daemon logs each HTTP request at INFO level with:
 ### Log Levels
 
 | Level | Description |
-|-------|-------------|
+| ----- | ----------------------------------------------------- |
 | TRACE | Very detailed debugging information |
 | DEBUG | Debugging information (request details, AI decisions) |
 | INFO | Normal operation (request logs, game outcomes) |
@@ -584,7 +584,7 @@ The daemon logs each HTTP request at INFO level with:
 ### Signal Handling
 
 | Signal | Action |
-|--------|--------|
+| ------- | ---------------------------------------------- |
 | SIGTERM | Graceful shutdown |
 | SIGINT | Graceful shutdown (Ctrl+C) |
 | SIGHUP | Log file reopen (for log rotation) |

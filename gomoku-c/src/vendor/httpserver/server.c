@@ -68,7 +68,7 @@ int hs_server_run_event_loop(http_server_t *serv, const char *ipaddr) {
 
 int hs_server_poll_events(http_server_t *serv) {
   struct kevent ev;
-  struct timespec ts = {0, 100000000};  // 100ms timeout to avoid busy-spin
+  struct timespec ts = {0, 100000000}; // 100ms timeout to avoid busy-spin
   int nev = kevent(serv->loop, NULL, 0, &ev, 1, &ts);
   if (nev <= 0)
     return nev;
@@ -118,7 +118,8 @@ int hs_server_run_event_loop(http_server_t *serv, const char *ipaddr) {
 
 int hs_server_poll_events(http_server_t *serv) {
   struct epoll_event ev;
-  int nev = epoll_wait(serv->loop, &ev, 1, 100);  // 100ms timeout to avoid busy-spin
+  int nev =
+      epoll_wait(serv->loop, &ev, 1, 100); // 100ms timeout to avoid busy-spin
   if (nev <= 0)
     return nev;
   ev_cb_t *ev_cb = (ev_cb_t *)ev.data.ptr;

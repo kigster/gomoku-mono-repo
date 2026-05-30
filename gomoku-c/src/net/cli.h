@@ -20,12 +20,12 @@
 //===============================================================================
 
 typedef enum {
-    DAEMON_LOG_TRACE = 0,
-    DAEMON_LOG_DEBUG = 1,
-    DAEMON_LOG_INFO = 2,
-    DAEMON_LOG_WARN = 3,
-    DAEMON_LOG_ERROR = 4,
-    DAEMON_LOG_FATAL = 5
+  DAEMON_LOG_TRACE = 0,
+  DAEMON_LOG_DEBUG = 1,
+  DAEMON_LOG_INFO = 2,
+  DAEMON_LOG_WARN = 3,
+  DAEMON_LOG_ERROR = 4,
+  DAEMON_LOG_FATAL = 5
 } daemon_log_level_t;
 
 //===============================================================================
@@ -33,15 +33,15 @@ typedef enum {
 //===============================================================================
 
 typedef struct {
-    char bind_host[256];          // Host to bind (from -b/--bind)
-    int bind_port;                // Port to bind (from -b/--bind)
-    int agent_port;               // HAProxy agent-check port (-a/--agent-port), 0 = disabled
-    int daemonize;                // Run as daemon (-d/--daemonize)
-    char log_file[512];           // Log file path (-l/--log-file), empty = stdout
-    daemon_log_level_t log_level; // Log level (-L/--log-level)
-    int report_scoring;           // Include scoring report in JSON (-r/--report-scoring)
-    int show_help;                // Show help and exit
-    int invalid_args;             // Invalid arguments detected
+  char bind_host[256]; // Host to bind (from -b/--bind)
+  int bind_port;       // Port to bind (from -b/--bind)
+  int agent_port; // HAProxy agent-check port (-a/--agent-port), 0 = disabled
+  int daemonize;  // Run as daemon (-d/--daemonize)
+  char log_file[512];           // Log file path (-l/--log-file), empty = stdout
+  daemon_log_level_t log_level; // Log level (-L/--log-level)
+  int report_scoring; // Include scoring report in JSON (-r/--report-scoring)
+  int show_help;      // Show help and exit
+  int invalid_args;   // Invalid arguments detected
 } daemon_config_t;
 
 //===============================================================================

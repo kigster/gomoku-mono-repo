@@ -67,6 +67,7 @@ Envoy listens on `127.0.0.1:10000` (same as HAProxy frontend), receiving request
 ### Cluster (Backend Pool)
 
 The `gomoku_cluster` contains all 10 gomoku-httpd instances:
+
 - Ports 9500-9504 (AZ-a primary servers)
 - Ports 9505-9509 (AZ-b backup servers)
 
@@ -77,15 +78,16 @@ circuit_breakers:
   thresholds:
     - priority: DEFAULT
       max_connections: 100
-      max_pending_requests: 1000  # Queue up to 1000 requests
+      max_pending_requests: 1000 # Queue up to 1000 requests
       max_requests: 100
       max_retries: 10
 ```
 
 When all servers are busy:
+
 1. New requests queue in Envoy (up to 1000)
-2. As servers become available, queued requests are dispatched
-3. Only after 1000 pending requests will Envoy return 503
+1. As servers become available, queued requests are dispatched
+1. Only after 1000 pending requests will Envoy return 503
 
 ### Health Checks
 
@@ -102,6 +104,7 @@ health_checks:
 ```
 
 The `/ready` endpoint returns:
+
 - `200 OK` with `{"status":"ready"}` when server is idle
 - `503 Service Unavailable` with `{"status":"busy"}` when processing a request
 
@@ -147,7 +150,7 @@ curl http://127.0.0.1:9901/stats | grep pending
 ## Comparison: HAProxy vs Envoy
 
 | Feature | HAProxy | Envoy |
-|---------|---------|-------|
+| --------------- | ----------------------------- | -------------------------------------- |
 | Health Check | TCP agent-check (drain/ready) | HTTP /ready endpoint |
 | Request Queue | Limited (via maxconn) | Circuit breaker (max_pending_requests) |
 | Retry Policy | Manual configuration | Built-in with backoff |
@@ -182,16 +185,19 @@ envoy -c iac/envoy/envoy.yaml
 ## Testing
 
 1. Start gomoku-httpd servers:
+
    ```bash
    bin/gomoku-ctl start
    ```
 
-2. Start Envoy:
+1. Start Envoy:
+
    ```bash
    envoy -c iac/envoy/envoy.yaml
    ```
 
-3. Run test clients:
+1. Run test clients:
+
    ```bash
    # Run multiple clients in parallel
    for i in {1..20}; do
@@ -200,7 +206,8 @@ envoy -c iac/envoy/envoy.yaml
    wait
    ```
 
-4. Monitor Envoy stats:
+1. Monitor Envoy stats:
+
    ```bash
    # Watch pending requests
    watch -n1 'curl -s http://127.0.0.1:9901/stats | grep pending'

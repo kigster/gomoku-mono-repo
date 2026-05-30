@@ -59,7 +59,7 @@ join completes.
   on a tiered schedule:
 
   | Elapsed | Interval |
-  |---|---|
+  | --------- | -------- |
   | 0–10 min | 300 ms |
   | 10–30 min | 2 s |
   | 30–60 min | 3 s |

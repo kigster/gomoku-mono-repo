@@ -35,7 +35,7 @@ service; engine moves are proxied to a pool of stateless
 ### Difficulty knobs
 
 | Setting | Range | Meaning |
-|---|---|---|
+| ---------------- | ---------------------------- | --------------------------------------------------------------------------------------------------- |
 | AI Search Depth | 2–5 | Plies of alpha-beta. Web caps at 5 so a single move fits the per-move budget on a Cloud Run worker. |
 | AI Search Radius | 1–4 | Candidate-move generator distance from existing stones. |
 | AI Timeout | none / 30 / 60 / 120 / 300 s | Wall-clock cap per AI move. |

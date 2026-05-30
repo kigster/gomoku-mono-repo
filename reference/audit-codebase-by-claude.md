@@ -20,7 +20,7 @@ ______________________________________________________________________
 ## Executive Summary
 
 | Component | Critical | High | Medium | Low | Total |
-|-----------------|----------|------|--------|-----|-------|
+| -------------- | -------- | ------ | ------ | ------ | ------- |
 | C Engine | 1 | 4 | 10 | 5 | 20 |
 | Python API | 2 | 2 | 13 | 9 | 26 |
 | Frontend | 0 | 7 | 13 | 12 | 32 |
@@ -627,7 +627,7 @@ ______________________________________________________________________
 ### Immediate (Do Today)
 
 | ID | Action | Risk Mitigated |
-|----|--------|----------------|
+| ----------------- | -------------------------------------------------------------- | --------------------- |
 | API-01 / INFRA-01 | Remove `.env` from git, add to `.gitignore`, rotate JWT secret | Authentication bypass |
 | API-02 | Set specific CORS origins, remove wildcard | CSRF attacks |
 | C-01 | Add max body size check in HTTP handler | DoS |
@@ -636,7 +636,7 @@ ______________________________________________________________________
 ### This Week
 
 | ID | Action | Risk Mitigated |
-|----|--------|----------------|
+| -------- | ------------------------------------------------ | -------------------- |
 | INFRA-03 | Add non-root USER to all Dockerfiles | Container escape |
 | C-02 | Add mutex to transposition table | Data corruption |
 | C-03 | Replace all `strcpy()` with bounded alternatives | Buffer overflow |
@@ -652,7 +652,7 @@ ______________________________________________________________________
 ### Next Sprint
 
 | ID | Action | Risk Mitigated |
-|----|--------|----------------|
+| ------ | --------------------------------------------- | ------------------------ |
 | API-05 | Log JWT decode failures | Security audit trail |
 | API-07 | Strengthen password requirements | Weak credentials |
 | API-09 | Default logging to INFO | Information leakage |
@@ -667,7 +667,7 @@ ______________________________________________________________________
 ### Backlog
 
 | ID | Action |
-|----|--------|
+| ----------- | ------------------------------------------------------ |
 | FE-09 | Modal accessibility (focus trap, Escape) |
 | FE-28 | Expand frontend test coverage |
 | API-20-22 | Expand API test coverage (email, concurrency, fuzzing) |

@@ -24,17 +24,18 @@
 // The engine's gomoku.h already defines DEFAULT_BOARD_SIZE = 19 for the TUI;
 // the brain uses a separate constant to avoid the macro collision and to
 // document that the Standard tournament category is fixed at 15x15.
-#define BRAIN_BOARD_SIZE       15
+#define BRAIN_BOARD_SIZE 15
 
 // Default search depth. We use 5 (not 7) deliberately:
 //
-// The engine's find_best_ai_move pipeline (see reference/c-engine-ai-algorithm-deep-dive.md §1) handles
-// every meaningful tactical situation BEFORE minimax via Steps 1-6: own
-// winning move, blocking opponent's win, compound threats, VCT search,
-// blocking open threes, playing forcing fours. Depth only matters for
-// Step 7 (minimax), which runs in QUIET positions where neither side has
-// a forcing line. In quiet positions, the static evaluator is the
-// dominant signal, and depth 5 vs 7 changes the move chosen rarely.
+// The engine's find_best_ai_move pipeline (see
+// reference/c-engine-ai-algorithm-deep-dive.md §1) handles every meaningful
+// tactical situation BEFORE minimax via Steps 1-6: own winning move, blocking
+// opponent's win, compound threats, VCT search, blocking open threes, playing
+// forcing fours. Depth only matters for Step 7 (minimax), which runs in QUIET
+// positions where neither side has a forcing line. In quiet positions, the
+// static evaluator is the dominant signal, and depth 5 vs 7 changes the move
+// chosen rarely.
 //
 // An adaptive "depth 5 normally, depth 7 when the position is hot" rule
 // would need a position-classifier that the existing pipeline doesn't
@@ -45,8 +46,8 @@
 // improved heuristic from PR #86 (broken-three / broken-four / overline
 // fixes) is a strong baseline that fits comfortably inside the 30s
 // per-turn tournament budget on a 15x15 board.
-#define BRAIN_DEFAULT_DEPTH    5
-#define BRAIN_SEARCH_RADIUS    3
+#define BRAIN_DEFAULT_DEPTH 5
+#define BRAIN_SEARCH_RADIUS 3
 
 // Brain-side identification of the two engine players. self_color is whichever
 // side the manager assigns to us — determined the first time the manager asks
@@ -54,10 +55,10 @@
 typedef struct {
   game_state_t *game;
   time_budget_t budget;
-  int board_size;          // Set on START; rejects sizes != 15.
-  int self_color;          // AI_CELL_CROSSES or AI_CELL_NAUGHTS, or 0 if unknown.
-  int started;             // 1 once START succeeded.
-  int board_collecting;    // 1 between BOARD and DONE.
+  int board_size;       // Set on START; rejects sizes != 15.
+  int self_color;       // AI_CELL_CROSSES or AI_CELL_NAUGHTS, or 0 if unknown.
+  int started;          // 1 once START succeeded.
+  int board_collecting; // 1 between BOARD and DONE.
 } brain_t;
 
 // ---------------------------------------------------------------------------
@@ -93,14 +94,14 @@ static cli_config_t make_brain_config(int board_size) {
   memset(&cfg, 0, sizeof(cfg));
   cfg.board_size = board_size;
   cfg.max_depth = BRAIN_DEFAULT_DEPTH;
-  cfg.move_timeout = 0;          // Per-move budget is set on each search.
+  cfg.move_timeout = 0; // Per-move budget is set on each search.
   cfg.show_help = 0;
   cfg.invalid_args = 0;
   cfg.enable_undo = 1;
-  cfg.max_undo_allowed = 0;      // 0 = unlimited; takeback may arrive any time.
+  cfg.max_undo_allowed = 0; // 0 = unlimited; takeback may arrive any time.
   cfg.skip_welcome = 1;
-  cfg.headless = 1;              // Suppress stdout chatter from the engine.
-  cfg.stateless_mode = 0;        // Reuse the TT across turns (see plan §6).
+  cfg.headless = 1;       // Suppress stdout chatter from the engine.
+  cfg.stateless_mode = 0; // Reuse the TT across turns (see plan §6).
   cfg.search_radius = BRAIN_SEARCH_RADIUS;
   cfg.json_file[0] = '\0';
   cfg.replay_file[0] = '\0';
@@ -124,7 +125,8 @@ static int reset_game(brain_t *b, int board_size) {
   }
   cli_config_t cfg = make_brain_config(board_size);
   b->game = init_game(cfg);
-  if (!b->game) return 0;
+  if (!b->game)
+    return 0;
   b->board_size = board_size;
   b->self_color = 0;
   return 1;
@@ -136,8 +138,10 @@ static int other_color(int color) {
 
 // Apply an opponent stone to the engine. Returns 1 on success.
 static int apply_stone(brain_t *b, int row, int col, int player) {
-  if (!b->game) return 0;
-  if (!gomocup_coord_in_bounds(col, row, b->board_size)) return 0;
+  if (!b->game)
+    return 0;
+  if (!gomocup_coord_in_bounds(col, row, b->board_size))
+    return 0;
   // make_move uses the engine's internal current_player only for game-state
   // bookkeeping; we pass `player` directly so a BOARD replay can interleave
   // the two sides regardless of whose turn the engine "thinks" it is.
@@ -184,8 +188,7 @@ static int compute_and_emit_move(brain_t *b) {
 
   b->game->max_depth = saved_depth;
 
-  if (row < 0 || col < 0 ||
-      !gomocup_coord_in_bounds(col, row, b->board_size)) {
+  if (row < 0 || col < 0 || !gomocup_coord_in_bounds(col, row, b->board_size)) {
     // Defensive: pick centre as a last-ditch fallback so we do not forfeit.
     row = b->board_size / 2;
     col = b->board_size / 2;
@@ -261,7 +264,8 @@ static void handle_turn(brain_t *b, const parsed_command_t *cmd) {
     out_error("brain not started");
     return;
   }
-  // First TURN with no prior moves implies opponent moved first → we are NAUGHTS.
+  // First TURN with no prior moves implies opponent moved first → we are
+  // NAUGHTS.
   if (!b->self_color) {
     b->self_color = AI_CELL_NAUGHTS;
   }
@@ -300,7 +304,8 @@ static void handle_takeback(brain_t *b, const parsed_command_t *cmd) {
   b->game->stones_on_board = 0;
   for (int r = 0; r < b->board_size; r++) {
     for (int c = 0; c < b->board_size; c++) {
-      if (b->game->board[r][c] != AI_CELL_EMPTY) b->game->stones_on_board++;
+      if (b->game->board[r][c] != AI_CELL_EMPTY)
+        b->game->stones_on_board++;
     }
   }
   invalidate_winner_cache(b->game);
@@ -320,9 +325,7 @@ static void apply_info(brain_t *b, const parsed_command_t *cmd) {
   // No response for INFO.
 }
 
-static void handle_about(void) {
-  out_line(GOMOCUP_ABOUT_LINE);
-}
+static void handle_about(void) { out_line(GOMOCUP_ABOUT_LINE); }
 
 static void handle_board(brain_t *b) {
   if (!b->started) {
@@ -344,7 +347,8 @@ static void handle_board(brain_t *b) {
   b->game->current_player = AI_CELL_CROSSES;
 
   if (!b->self_color) {
-    b->self_color = AI_CELL_CROSSES;  // fallback; refined below if BOARD has only opponent stones
+    b->self_color = AI_CELL_CROSSES; // fallback; refined below if BOARD has
+                                     // only opponent stones
   }
 
   b->board_collecting = 1;
@@ -353,20 +357,23 @@ static void handle_board(brain_t *b) {
   while (fgets(line, sizeof(line), stdin)) {
     // Detect DONE (case-insensitive) anywhere on the line.
     char *p = line;
-    while (*p && isspace((unsigned char)*p)) p++;
+    while (*p && isspace((unsigned char)*p))
+      p++;
     if (strncasecmp(p, "DONE", 4) == 0) {
       b->board_collecting = 0;
       break;
     }
     int gx = -1, gy = -1, field = -1;
     if (!protocol_parse_board_row(line, &gx, &gy, &field)) {
-      continue;  // tolerate noise
+      continue; // tolerate noise
     }
-    if (!gomocup_coord_in_bounds(gx, gy, b->board_size)) continue;
+    if (!gomocup_coord_in_bounds(gx, gy, b->board_size))
+      continue;
     int row = -1, col = -1;
     gomocup_to_engine(gx, gy, &row, &col);
     int stone = (field == 1) ? b->self_color : other_color(b->self_color);
-    if (b->game->board[row][col] != AI_CELL_EMPTY) continue;
+    if (b->game->board[row][col] != AI_CELL_EMPTY)
+      continue;
     make_move(b->game, row, col, stone, 0.0, 0, 0, 0);
   }
   // After DONE, it is always our turn (the manager sends BOARD when it wants
@@ -379,47 +386,47 @@ static int dispatch(brain_t *b, const char *line) {
   protocol_parse_line(line, &cmd);
 
   switch (cmd.kind) {
-    case CMD_EMPTY:
-      return 1;
-    case CMD_START:
-      handle_start(b, &cmd);
-      return 1;
-    case CMD_RESTART:
-      handle_restart(b);
-      return 1;
-    case CMD_BEGIN:
-      handle_begin(b);
-      return 1;
-    case CMD_TURN:
-      handle_turn(b, &cmd);
-      return 1;
-    case CMD_TAKEBACK:
-      handle_takeback(b, &cmd);
-      return 1;
-    case CMD_BOARD:
-      handle_board(b);
-      return 1;
-    case CMD_INFO:
-      apply_info(b, &cmd);
-      return 1;
-    case CMD_ABOUT:
-      handle_about();
-      return 1;
-    case CMD_END:
-      return 0;
-    case CMD_RECTSTART:
-      out_error("rectangular boards not supported");
-      return 1;
-    case CMD_SWAP2BOARD:
-      out_error("swap2 not supported");
-      return 1;
-    case CMD_INVALID:
-      out_error("malformed command");
-      return 1;
-    case CMD_UNKNOWN:
-    default:
-      out_unknown(cmd.raw[0] ? cmd.raw : "unrecognised command");
-      return 1;
+  case CMD_EMPTY:
+    return 1;
+  case CMD_START:
+    handle_start(b, &cmd);
+    return 1;
+  case CMD_RESTART:
+    handle_restart(b);
+    return 1;
+  case CMD_BEGIN:
+    handle_begin(b);
+    return 1;
+  case CMD_TURN:
+    handle_turn(b, &cmd);
+    return 1;
+  case CMD_TAKEBACK:
+    handle_takeback(b, &cmd);
+    return 1;
+  case CMD_BOARD:
+    handle_board(b);
+    return 1;
+  case CMD_INFO:
+    apply_info(b, &cmd);
+    return 1;
+  case CMD_ABOUT:
+    handle_about();
+    return 1;
+  case CMD_END:
+    return 0;
+  case CMD_RECTSTART:
+    out_error("rectangular boards not supported");
+    return 1;
+  case CMD_SWAP2BOARD:
+    out_error("swap2 not supported");
+    return 1;
+  case CMD_INVALID:
+    out_error("malformed command");
+    return 1;
+  case CMD_UNKNOWN:
+  default:
+    out_unknown(cmd.raw[0] ? cmd.raw : "unrecognised command");
+    return 1;
   }
 }
 
@@ -443,7 +450,8 @@ int main(int argc, char **argv) {
 
   char line[1024];
   while (fgets(line, sizeof(line), stdin)) {
-    if (!dispatch(&brain, line)) break;
+    if (!dispatch(&brain, line))
+      break;
   }
 
   if (brain.game) {

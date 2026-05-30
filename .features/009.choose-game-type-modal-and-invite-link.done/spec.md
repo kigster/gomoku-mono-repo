@@ -63,7 +63,7 @@ After ~1 s:
 ### Terminal transitions
 
 | Event | UI | Backend side-effect |
-|---|---|---|
+| ---------------------------- | --------------------------------------------------------- | --------------------------------------------------- |
 | Guest follows link | Modal closes, browser → `/play/{code}` | `POST /multiplayer/{code}/join` (existing) |
 | Host clicks `[X]` | Modal closes, AI game starts with current settings | `POST /multiplayer/{code}/cancel` (state=cancelled) |
 | 15 min elapse without guest | Modal closes, "Your invite expired" toast, AI game starts | Backend transitions state to `cancelled` lazily |

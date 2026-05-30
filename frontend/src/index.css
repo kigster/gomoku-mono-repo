@@ -7,49 +7,95 @@ html {
 }
 
 body {
-  font-family: 'Dosis', sans-serif;
+  font-family: "Dosis", sans-serif;
   font-weight: 500;
   font-size: 1.05em;
-  background: linear-gradient(135deg, #e8e0d4 0%, #f5f0e8 25%, #ddd5c8 50%, #f0ebe3 75%, #e5ddd0 100%);
+  background: linear-gradient(
+    135deg,
+    #e8e0d4 0%,
+    #f5f0e8 25%,
+    #ddd5c8 50%,
+    #f0ebe3 75%,
+    #e5ddd0 100%
+  );
   background-attachment: fixed;
   min-height: 100vh;
 }
 
 body::before {
-  content: '';
+  content: "";
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   background:
-    radial-gradient(ellipse at 20% 20%, rgba(210, 180, 140, 0.3) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 80%, rgba(180, 150, 110, 0.2) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 0%, rgba(200, 170, 130, 0.15) 0%, transparent 40%);
+    radial-gradient(
+      ellipse at 20% 20%,
+      rgba(210, 180, 140, 0.3) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at 80% 80%,
+      rgba(180, 150, 110, 0.2) 0%,
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse at 50% 0%,
+      rgba(200, 170, 130, 0.15) 0%,
+      transparent 40%
+    );
   pointer-events: none;
   z-index: 0;
 }
 
-h1, h2, h3, .font-heading {
-  font-family: 'Momo Trust Display', sans-serif;
+h1,
+h2,
+h3,
+.font-heading {
+  font-family: "Momo Trust Display", sans-serif;
 }
 
 /* ── Wood board ──────────────────────────────────────────────────────── */
 .board-wood {
-  background-color: #C8984A;
+  background-color: #c8984a;
   background-image:
     repeating-linear-gradient(
-      87deg, transparent, transparent 1px,
-      rgba(90, 45, 5, 0.07) 1px, rgba(90, 45, 5, 0.07) 3px
+      87deg,
+      transparent,
+      transparent 1px,
+      rgba(90, 45, 5, 0.07) 1px,
+      rgba(90, 45, 5, 0.07) 3px
     ),
     repeating-linear-gradient(
-      93deg, transparent, transparent 2px,
-      rgba(110, 65, 15, 0.05) 2px, rgba(110, 65, 15, 0.05) 5px
+      93deg,
+      transparent,
+      transparent 2px,
+      rgba(110, 65, 15, 0.05) 2px,
+      rgba(110, 65, 15, 0.05) 5px
     ),
     repeating-linear-gradient(
-      0deg, transparent, transparent 20px,
-      rgba(90, 45, 5, 0.04) 20px, rgba(90, 45, 5, 0.04) 40px
+      0deg,
+      transparent,
+      transparent 20px,
+      rgba(90, 45, 5, 0.04) 20px,
+      rgba(90, 45, 5, 0.04) 40px
     ),
-    radial-gradient(ellipse at 25% 45%, rgba(90, 45, 5, 0.1) 0%, transparent 65%),
-    radial-gradient(ellipse at 75% 25%, rgba(130, 80, 20, 0.07) 0%, transparent 55%),
-    radial-gradient(ellipse at 50% 80%, rgba(70, 30, 5, 0.09) 0%, transparent 50%);
+    radial-gradient(
+      ellipse at 25% 45%,
+      rgba(90, 45, 5, 0.1) 0%,
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse at 75% 25%,
+      rgba(130, 80, 20, 0.07) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse at 50% 80%,
+      rgba(70, 30, 5, 0.09) 0%,
+      transparent 50%
+    );
 }
 
 /* ── Game panel ──────────────────────────────────────────────────────── */
@@ -62,8 +108,9 @@ h1, h2, h3, .font-heading {
   transform: scale(1);
   transform-origin: top center;
   /* slow ease-out on mouse-leave */
-  transition: transform 0.65s cubic-bezier(0.25, 0.46, 0.45, 0.94),
-              box-shadow 0.65s ease;
+  transition:
+    transform 0.65s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+    box-shadow 0.65s ease;
   will-change: transform;
 }
 .game-panel:hover {
@@ -73,8 +120,9 @@ h1, h2, h3, .font-heading {
     0 24px 72px rgba(0, 0, 0, 0.65),
     0 4px 16px rgba(0, 0, 0, 0.4);
   /* fast ease-in on mouse-enter */
-  transition: transform 0.18s ease-out,
-              box-shadow 0.18s ease-out;
+  transition:
+    transform 0.18s ease-out,
+    box-shadow 0.18s ease-out;
 }
 
 /* ── Glass card ──────────────────────────────────────────────────────── */
@@ -108,7 +156,9 @@ input[type="range"]::-webkit-slider-thumb {
   background: #f59e0b;
   cursor: pointer;
   border: 2px solid #161619;
-  transition: box-shadow 0.15s ease, transform 0.1s ease;
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.1s ease;
 }
 input[type="range"]:not(:disabled)::-webkit-slider-thumb:hover {
   box-shadow: 0 0 0 5px rgba(245, 158, 11, 0.22);
@@ -130,16 +180,27 @@ input[type="range"]::-moz-range-track {
 
 /* ── Animations ──────────────────────────────────────────────────────── */
 @keyframes pulse-slow {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.35; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 .animate-pulse-slow {
   animation: pulse-slow 1.8s ease-in-out infinite;
 }
 
 @keyframes slide-in {
-  from { opacity: 0; transform: translateX(100%); }
-  to   { opacity: 1; transform: translateX(0); }
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 .animate-slide-in {
   animation: slide-in 0.25s ease-out;

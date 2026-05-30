@@ -12,7 +12,7 @@ extern "C" {
  * Caller owns the returned buffer.
  */
 char *test_client_create_initial_game_state(int board_size, int depth,
-                                             int radius);
+                                            int radius);
 
 /**
  * Create an initial game state JSON with depth_x, depth_o and optional timeout.
@@ -20,8 +20,8 @@ char *test_client_create_initial_game_state(int board_size, int depth,
  * Caller owns the returned buffer.
  */
 char *test_client_create_initial_game_state_ex(int board_size, int depth_x,
-                                                int depth_o, int radius,
-                                                int timeout_sec);
+                                               int depth_o, int radius,
+                                               int timeout_sec);
 
 /**
  * Extract the last move (player label and position) from JSON response.

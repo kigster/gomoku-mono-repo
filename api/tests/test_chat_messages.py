@@ -32,9 +32,7 @@ async def _create_in_progress_game(
 
 
 @pytest.mark.asyncio
-async def test_chats_row_created_with_multiplayer_game(
-    client: AsyncClient, auth_headers
-):
+async def test_chats_row_created_with_multiplayer_game(client: AsyncClient, auth_headers):
     """`allocate_game` creates a chats row in the same transaction as the
     multiplayer_games row. POST /multiplayer/new is enough to trigger it
     — no guest, no messages, no endpoint hit on the chat side."""
@@ -64,9 +62,7 @@ async def test_chats_row_created_with_multiplayer_game(
 async def test_post_message_happy_path(
     client: AsyncClient, auth_headers, registered_user, second_registered_user
 ):
-    code = await _create_in_progress_game(
-        client, auth_headers, second_registered_user["headers"]
-    )
+    code = await _create_in_progress_game(client, auth_headers, second_registered_user["headers"])
     resp = await client.post(
         f"/chat/{code}/messages",
         headers=auth_headers,
@@ -86,9 +82,7 @@ async def test_post_message_non_participant_returns_403(
     client: AsyncClient, auth_headers, second_registered_user, make_user
 ):
     """Only host or guest can post into the chat — a third party is 403."""
-    code = await _create_in_progress_game(
-        client, auth_headers, second_registered_user["headers"]
-    )
+    code = await _create_in_progress_game(client, auth_headers, second_registered_user["headers"])
     eve = await make_user("eve")
     resp = await client.post(
         f"/chat/{code}/messages",
@@ -100,12 +94,8 @@ async def test_post_message_non_participant_returns_403(
 
 
 @pytest.mark.asyncio
-async def test_post_message_unknown_code_returns_404(
-    client: AsyncClient, auth_headers
-):
-    resp = await client.post(
-        "/chat/ZZZZZZ/messages", headers=auth_headers, json={"message": "hi"}
-    )
+async def test_post_message_unknown_code_returns_404(client: AsyncClient, auth_headers):
+    resp = await client.post("/chat/ZZZZZZ/messages", headers=auth_headers, json={"message": "hi"})
     assert resp.status_code == 404
     assert "multiplayer_game_not_found" in resp.text
 
@@ -115,9 +105,7 @@ async def test_post_message_length_rejected(
     client: AsyncClient, auth_headers, second_registered_user
 ):
     """Pydantic rejects > 500-char messages with a 422 before they hit the DB."""
-    code = await _create_in_progress_game(
-        client, auth_headers, second_registered_user["headers"]
-    )
+    code = await _create_in_progress_game(client, auth_headers, second_registered_user["headers"])
     too_long = "x" * 501
     resp = await client.post(
         f"/chat/{code}/messages",
@@ -126,9 +114,7 @@ async def test_post_message_length_rejected(
     )
     assert resp.status_code == 422
 
-    empty = await client.post(
-        f"/chat/{code}/messages", headers=auth_headers, json={"message": ""}
-    )
+    empty = await client.post(f"/chat/{code}/messages", headers=auth_headers, json={"message": ""})
     assert empty.status_code == 422
 
 
@@ -139,9 +125,7 @@ async def test_post_message_stores_slash_command_verbatim(
     """Slash-command bodies are stored verbatim — "store first, post-process
     later". The endpoint does NOT dispatch the side effect; the client does
     that after the POST returns."""
-    code = await _create_in_progress_game(
-        client, auth_headers, second_registered_user["headers"]
-    )
+    code = await _create_in_progress_game(client, auth_headers, second_registered_user["headers"])
     resp = await client.post(
         f"/chat/{code}/messages",
         headers=auth_headers,
@@ -160,16 +144,10 @@ async def test_post_message_stores_slash_command_verbatim(
 async def test_get_messages_returns_all_in_order(
     client: AsyncClient, auth_headers, second_registered_user
 ):
-    code = await _create_in_progress_game(
-        client, auth_headers, second_registered_user["headers"]
-    )
+    code = await _create_in_progress_game(client, auth_headers, second_registered_user["headers"])
     # Host posts two, then guest posts one.
-    await client.post(
-        f"/chat/{code}/messages", headers=auth_headers, json={"message": "one"}
-    )
-    await client.post(
-        f"/chat/{code}/messages", headers=auth_headers, json={"message": "two"}
-    )
+    await client.post(f"/chat/{code}/messages", headers=auth_headers, json={"message": "one"})
+    await client.post(f"/chat/{code}/messages", headers=auth_headers, json={"message": "two"})
     await client.post(
         f"/chat/{code}/messages",
         headers=second_registered_user["headers"],
@@ -189,20 +167,14 @@ async def test_get_messages_speaker_is_me_is_caller_relative(
     `False` for the other participant. This is what lets the frontend
     render bubbles on the right side for the local user without an extra
     lookup."""
-    code = await _create_in_progress_game(
-        client, auth_headers, second_registered_user["headers"]
-    )
-    await client.post(
-        f"/chat/{code}/messages", headers=auth_headers, json={"message": "from host"}
-    )
+    code = await _create_in_progress_game(client, auth_headers, second_registered_user["headers"])
+    await client.post(f"/chat/{code}/messages", headers=auth_headers, json={"message": "from host"})
     # Host sees their own message as "me".
     host_view = (await client.get(f"/chat/{code}/messages", headers=auth_headers)).json()
     assert host_view["messages"][0]["speaker_is_me"] is True
     # Guest sees the same row as not-me.
     guest_view = (
-        await client.get(
-            f"/chat/{code}/messages", headers=second_registered_user["headers"]
-        )
+        await client.get(f"/chat/{code}/messages", headers=second_registered_user["headers"])
     ).json()
     assert guest_view["messages"][0]["speaker_is_me"] is False
 
@@ -211,23 +183,13 @@ async def test_get_messages_speaker_is_me_is_caller_relative(
 async def test_get_messages_with_since_returns_only_new(
     client: AsyncClient, auth_headers, second_registered_user
 ):
-    code = await _create_in_progress_game(
-        client, auth_headers, second_registered_user["headers"]
-    )
-    await client.post(
-        f"/chat/{code}/messages", headers=auth_headers, json={"message": "old"}
-    )
-    await client.post(
-        f"/chat/{code}/messages", headers=auth_headers, json={"message": "new"}
-    )
+    code = await _create_in_progress_game(client, auth_headers, second_registered_user["headers"])
+    await client.post(f"/chat/{code}/messages", headers=auth_headers, json={"message": "old"})
+    await client.post(f"/chat/{code}/messages", headers=auth_headers, json={"message": "new"})
     # since=1 skips the first message; since=2 yields nothing.
-    after_one = (
-        await client.get(f"/chat/{code}/messages?since=1", headers=auth_headers)
-    ).json()
+    after_one = (await client.get(f"/chat/{code}/messages?since=1", headers=auth_headers)).json()
     assert [m["message"] for m in after_one["messages"]] == ["new"]
-    after_two = (
-        await client.get(f"/chat/{code}/messages?since=2", headers=auth_headers)
-    ).json()
+    after_two = (await client.get(f"/chat/{code}/messages?since=2", headers=auth_headers)).json()
     assert after_two["messages"] == []
 
 
@@ -235,9 +197,7 @@ async def test_get_messages_with_since_returns_only_new(
 async def test_get_messages_non_participant_returns_403(
     client: AsyncClient, auth_headers, second_registered_user, make_user
 ):
-    code = await _create_in_progress_game(
-        client, auth_headers, second_registered_user["headers"]
-    )
+    code = await _create_in_progress_game(client, auth_headers, second_registered_user["headers"])
     eve = await make_user("eve_lurker")
     resp = await client.get(f"/chat/{code}/messages", headers=eve["headers"])
     assert resp.status_code == 403
@@ -255,9 +215,7 @@ async def test_block_cascade_records_abandoned_by(
     """When /social/block terminates an in_progress game, the blocker is
     recorded as `abandoned_by_user_id` and `abandoned_at` is stamped."""
     host_name = registered_user[0]
-    code = await _create_in_progress_game(
-        client, auth_headers, second_registered_user["headers"]
-    )
+    code = await _create_in_progress_game(client, auth_headers, second_registered_user["headers"])
     # The host blocks the guest — terminates the active game as abandoned.
     blocked = await client.post(
         "/social/block",

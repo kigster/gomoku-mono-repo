@@ -14,7 +14,7 @@ result short-circuits all subsequent steps.
 ### Step Pipeline
 
 | Step | Purpose | Threshold | Can Short-Circuit? |
-|------|---------|-----------|-------------------|
+| ---- | -------------------------------- | ----------------------------------------- | ------------------------- |
 | 1 | AI's own "winning" move | `my_threat >= 100000` | Yes (returns immediately) |
 | 2 | Block opponent threat | `opp_threat >= 40000` | Yes |
 | 2b | Create compound three | `my_threat in [30000, 40000)` | Yes |
@@ -37,7 +37,7 @@ Computed by `evaluate_threat_fast()` in `gomoku-c/src/gomoku/ai.c`.
 ### Per-Direction Scores
 
 | Pattern | Contiguous | Open Ends | Score | Category |
-|----------------------------------|-------------------------|-----------|-----------|-----------------------------------------------|
+| ----------------------------- | ----------------------- | --------- | --------- | --------------------------------------------- |
 | Five in a row | == 5 | any | 1,000,000 | Win — exactly five (overlines do NOT win) |
 | Overline | >= 6 | any | 0 | Sterile — standard gomoku rule |
 | Open four | 4 | 2 | 500,000 | Guaranteed win (unblockable) |
@@ -59,7 +59,7 @@ See BUG-004 below.
 ### Compound (Cross-Direction) Bonuses
 
 | Combination | Score | Rationale |
-|-------------|-------|-----------|
+| ----------------------- | ------ | ------------------------------------- |
 | Two fours | 48,000 | Opponent can only block one direction |
 | Four + three | 45,000 | Opponent can only block one threat |
 | Double open three | 40,000 | Opponent can only block one three |
@@ -221,13 +221,13 @@ For each occupied cell at (x, y):
 ```
 
 This is distinct from the leaf-evaluator radius (a fixed 3 around the
-*last* move, used by `evaluate_position_incremental_fast()` — see §3.4).
+_last_ move, used by `evaluate_position_incremental_fast()` — see §3.4).
 The two should not be conflated.
 
 ### Impact of Radius
 
 | Radius | Candidates (mid-game) | Behavior |
-|--------|----------------------|----------|
+| ------ | ------------------------ | ---------------------------------------------------- |
 | 1 | Very few | Misses most blocking moves |
 | 2 | Moderate (SPA default) | Faster; may overlook spread-out threats |
 | 3 | Many (TUI / API default) | Original design intent — full halo around all stones |
@@ -250,7 +250,7 @@ spread across the board, critical blocking moves fall outside the halo.
 in both pre-minimax steps and within the minimax search.
 
 | Condition | Priority | Notes |
-|------------------------|------------------------|----------------------------------------|
+| ---------------------- | ---------------------- | -------------------------------- |
 | `my_threat >= 500000` | 2,000,000,000 | Open four or five (winning move) |
 | `opp_threat >= 500000` | 1,500,000,000 | Block opponent open four or five |
 | `my_threat >= 40000` | 1,200,000,000 + threat | Compound threats |
@@ -643,7 +643,7 @@ ends were open.
 #### Threat values pre-fix vs post-fix
 
 | Pattern | Pre-fix score | Post-fix score |
-|------------------------------------|---------------|----------------|
+| -------------------------------- | ------------- | -------------- |
 | `_XX_X_` broken three, both open | 0 | 1,500 |
 | `XX_X` broken three, half-open | 400 | 400 |
 | `_XX_XX_` broken four, both open | 0 | 100,000 |
@@ -665,7 +665,7 @@ ends were open.
 - `AIBlocksBrokenThreeGap` — full board state with `XX_X` open both ends;
   AI must play the gap.
 - `BrokenThreeBuilderIsRecognizedThreat` — verifies the move that
-  *creates* the `XX_X` pattern from `XX` scores >= 1,500.
+  _creates_ the `XX_X` pattern from `XX` scores >= 1,500.
 - `BrokenFourIsMustBlock` — `XX_XX` pattern and the move that builds it
   both score >= 100,000.
 
@@ -753,7 +753,7 @@ depth 5) revealed:
    should penalize positions where one side has no offensive patterns.
 1. **Threat diversity bonus**: Two open twos in different directions (diamond/fork
    setup) now score 25000 at the point of placement, but the evaluation function
-   doesn't reward the *developing* position before the pivot is played.
+   doesn't reward the _developing_ position before the pivot is played.
 
 ### Proposed Fix
 
