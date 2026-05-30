@@ -138,9 +138,9 @@ async def _backdate_invites(host_username: str, minutes: int) -> None:
     """
     import asyncpg
 
-    from app.config import settings
+    from tests.conftest import TEST_DSN
 
-    conn = await asyncpg.connect(settings.database_url)
+    conn = await asyncpg.connect(TEST_DSN)
     try:
         await conn.execute(
             """

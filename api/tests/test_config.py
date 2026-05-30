@@ -17,6 +17,8 @@ class TestDatabaseDsn:
     def test_builds_dsn_with_socket(self):
         s = Settings(
             database_url="",
+            db_user="postgres",
+            db_password="",
             db_name="gomoku",
             db_socket="/cloudsql/project:region:instance",
         )
@@ -27,6 +29,7 @@ class TestDatabaseDsn:
     def test_builds_dsn_with_socket_and_password(self):
         s = Settings(
             database_url="",
+            db_user="postgres",
             db_name="gomoku",
             db_socket="/tmp",
             db_password="secret",
@@ -37,6 +40,7 @@ class TestDatabaseDsn:
         s = Settings(
             database_url="",
             db_user="app",
+            db_password="",
             db_name="mydb",
             postgresql_port=5432,
         )
@@ -57,6 +61,7 @@ class TestDatabaseDsn:
         s = Settings(
             database_url="",
             db_user="app",
+            db_password="",
             db_name="mydb",
             postgresql_port=5433,
         )

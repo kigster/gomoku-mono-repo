@@ -280,11 +280,11 @@ async def test_who_excludes_users_outside_window(client: AsyncClient, make_user)
     of the default-window /who response."""
     import asyncpg
 
-    from app.config import settings
+    from tests.conftest import TEST_DSN
 
     alice = await make_user("alice")
     await make_user("bob")
-    conn = await asyncpg.connect(settings.database_url)
+    conn = await asyncpg.connect(TEST_DSN)
     try:
         await conn.execute(
             """
