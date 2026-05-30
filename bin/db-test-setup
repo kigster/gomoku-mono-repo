@@ -11,6 +11,13 @@
 
 set -euo pipefail
 
+# PGPORT is the libpq-standard env var consumed by psql / pg_isready / etc.
+# Default it to POSTGRESQL_PORT (the single knob the rest of the toolchain
+# turns — exported by the repo-root .envrc) so callers only have to
+# remember one name; fall back to 5433 (Homebrew postgresql@18 default)
+# when neither is set.
+export PGPORT=${PGPORT:-${POSTGRESQL_PORT:-5433}}
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEST_DB="${TEST_DB_NAME:-gomoku_test}"
 
@@ -19,9 +26,9 @@ step() { printf '\n\033[1;36m==> %s\033[0m\n' "$*"; }
 recreate=false
 [[ "${1:-}" == "--recreate" ]] && recreate=true
 
-step "Verifying local Postgres is reachable on localhost:5432"
+step "Verifying local Postgres is reachable on localhost:${PGPORT}"
 if ! psql -h localhost -U postgres -d postgres -c '\q' >/dev/null 2>&1; then
-  echo "ERROR: cannot connect to postgres@localhost:5432" >&2
+  echo "ERROR: cannot connect to postgres@localhost:${PGPORT}" >&2
   echo "Ensure Postgres is running and that 'postgres' user has trust auth or set PGPASSWORD." >&2
   exit 1
 fi
@@ -39,4 +46,4 @@ psql -h localhost -U postgres -d postgres -tc \
 step "Running Alembic migrations against ${TEST_DB}"
 (cd "${REPO_ROOT}/api" && ENVIRONMENT=test uv run alembic upgrade head)
 
-step "Test database ready at postgresql://postgres@localhost:5432/${TEST_DB}"
+step "Test database ready at postgresql://postgres@localhost:${PGPORT}/${TEST_DB}"

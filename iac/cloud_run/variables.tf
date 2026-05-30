@@ -105,3 +105,37 @@ variable "custom_domain" {
   type        = string
   default     = ""
 }
+
+# ─── Email (password reset, account notifications) ────────────────────
+# `email_provider = "sendgrid"` activates real outbound mail; "stdout"
+# (the default) just logs the rendered template so dev/staging can run
+# without a SendGrid key. See api/app/email.py for the provider switch.
+
+variable "email_provider" {
+  description = "Email delivery backend: 'stdout' logs the rendered body; 'sendgrid' sends via the SendGrid Web API."
+  type        = string
+  default     = "stdout"
+  validation {
+    condition     = contains(["stdout", "sendgrid"], var.email_provider)
+    error_message = "email_provider must be one of: stdout, sendgrid."
+  }
+}
+
+variable "email_from" {
+  description = "From address for outbound mail. Must be a verified sender in SendGrid when email_provider='sendgrid'."
+  type        = string
+  default     = "gomoku@email.gomoku.games"
+}
+
+variable "email_from_name" {
+  description = "Display name for the From header."
+  type        = string
+  default     = "Gomoku Support"
+}
+
+variable "sendgrid_api_key" {
+  description = "SendGrid API key. Required when email_provider='sendgrid'. Generate at https://app.sendgrid.com/settings/api_keys with 'Mail Send' permission."
+  type        = string
+  default     = ""
+  sensitive   = true
+}

@@ -20,6 +20,27 @@ from httpx import ASGITransport, AsyncClient
 _api_dir = Path(__file__).resolve().parent.parent
 os.environ["ENVIRONMENT"] = "ci" if os.environ.get("CI") else "test"
 
+# Email isolation — the repo-root .env (consumed by .envrc's `dotenv`)
+# can set EMAIL_PROVIDER=sendgrid + SENDGRID_API_KEY for local password-
+# reset testing. Pydantic reads process env, so without this scrub the
+# tests would actually POST to SendGrid (and fail with 401 against a
+# revoked dev key). Force stdout mode regardless of shell state.
+os.environ["EMAIL_PROVIDER"] = "stdout"
+os.environ.pop("SENDGRID_API_KEY", None)
+
+# DSN isolation — same risk: if the repo-root .env carries a dev-convenience
+# `DATABASE_URL` (rather than the documented `PRODUCTION_DATABASE_URL`
+# namespacing) direnv exports it into our process env. Worse, `app/__init__.py`
+# calls `load_dotenv()` which walks up from CWD and re-injects the root
+# .env's `DATABASE_URL` on first `import app.config`. We set the key to
+# `""` (not `pop`) so python-dotenv treats it as "already present" and
+# skips it — Pydantic then sees an empty string and `database_dsn`
+# composes the DSN from POSTGRESQL_PORT + DB_USER + DB_NAME. Set
+# PYTEST_KEEP_DATABASE_URL=1 if you intentionally want the shell's
+# DATABASE_URL to win (e.g. pointing the suite at a Neon branch).
+if not os.environ.get("PYTEST_KEEP_DATABASE_URL"):
+    os.environ["DATABASE_URL"] = ""
+
 from app.config import settings  # noqa: E402
 from app.database import create_pool  # noqa: E402
 from app.main import app, fastapi_app  # noqa: E402
@@ -30,7 +51,10 @@ from app.main import app, fastapi_app  # noqa: E402
 # Sequential runs (no PYTEST_XDIST_WORKER) keep using the plain DB name.
 _WORKER = os.environ.get("PYTEST_XDIST_WORKER")
 if _WORKER:
-    _base = settings.database_url or "postgresql://postgres@localhost:5432/gomoku_test"
+    # `settings.database_dsn` always returns a non-empty DSN — composed
+    # from POSTGRESQL_PORT + DB_USER + DB_NAME when DATABASE_URL is
+    # unset (the common case for .env.test).
+    _base = settings.database_dsn
     _head, _db = _base.rsplit("/", 1)
     _name, _, _query = _db.partition("?")
     _suffixed = f"{_head}/{_name}_{_WORKER}" + (f"?{_query}" if _query else "")

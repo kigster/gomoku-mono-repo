@@ -29,11 +29,11 @@ set -euo pipefail
 
 ENVIRONMENT="${1:-production}"
 case "$ENVIRONMENT" in
-  production|staging) ;;
-  *)
-    printf '\033[1;31mERROR:\033[0m unknown environment %s. Use: production | staging\n' "$ENVIRONMENT" >&2
-    exit 2
-    ;;
+production | staging) ;;
+*)
+  printf '\033[1;31mERROR:\033[0m unknown environment %s. Use: production | staging\n' "$ENVIRONMENT" >&2
+  exit 2
+  ;;
 esac
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -60,6 +60,7 @@ db_var="${upper_env}_DATABASE_URL"
 jwt_var="${upper_env}_JWT_SECRET"
 domain_var="${upper_env}_CUSTOM_DOMAIN"
 honey_var="${upper_env}_HONEYCOMB_INGEST_API_KEY"
+sendgrid_var="${upper_env}_SENDGRID_API_KEY"
 
 DATABASE_URL_VAL="${!db_var:-}"
 JWT_SECRET_VAL="${!jwt_var:-}"
@@ -69,13 +70,20 @@ CUSTOM_DOMAIN_VAL="${!domain_var:-${CUSTOM_DOMAIN:-}}"
 # Per-env Honeycomb key falls back to the shared HONEYCOMB_INGEST_API_KEY so
 # the existing prod setup keeps working unchanged.
 HONEYCOMB_KEY_VAL="${!honey_var:-${HONEYCOMB_INGEST_API_KEY:-}}"
+# Email — provider + sender are shared across envs by default; per-env
+# SendGrid key is optional (falls back to unprefixed SENDGRID_API_KEY so a
+# single key powers prod + staging if you want).
+SENDGRID_KEY_VAL="${!sendgrid_var:-${SENDGRID_API_KEY:-}}"
+EMAIL_PROVIDER_VAL="${EMAIL_PROVIDER:-stdout}"
+EMAIL_FROM_VAL="${EMAIL_FROM:-}"
+EMAIL_FROM_NAME_VAL="${EMAIL_FROM_NAME:-}"
 
 # Required-key check
 missing=()
 [[ -z "${DATABASE_URL_VAL}" ]] && missing+=("${db_var}")
-[[ -z "${JWT_SECRET_VAL}"   ]] && missing+=("${jwt_var}")
+[[ -z "${JWT_SECRET_VAL}" ]] && missing+=("${jwt_var}")
 [[ -z "${HONEYCOMB_KEY_VAL}" ]] && missing+=("${honey_var} or HONEYCOMB_INGEST_API_KEY")
-[[ -z "${PROJECT_ID:-}"     ]] && missing+=("PROJECT_ID")
+[[ -z "${PROJECT_ID:-}" ]] && missing+=("PROJECT_ID")
 ((${#missing[@]} == 0)) || fail "Empty in .env for environment=${ENVIRONMENT}: ${missing[*]}"
 
 # Map → Terraform variable names. The PRODUCTION_/STAGING_ prefixes in .env
@@ -89,6 +97,13 @@ export TF_VAR_honeycomb_api_key="${HONEYCOMB_KEY_VAL}"
 export TF_VAR_honeycomb_dataset="${HONEYCOMB_DATASET:-}"
 export TF_VAR_custom_domain="${CUSTOM_DOMAIN_VAL}"
 export TF_VAR_environment="${ENVIRONMENT}"
+# Email plumbing. EMAIL_PROVIDER defaults to "stdout" so deploys without
+# the SendGrid key in .env continue to work (the API just logs rendered
+# bodies). Flip to "sendgrid" + provide SENDGRID_API_KEY for real send.
+export TF_VAR_email_provider="${EMAIL_PROVIDER_VAL}"
+export TF_VAR_email_from="${EMAIL_FROM_VAL}"
+export TF_VAR_email_from_name="${EMAIL_FROM_NAME_VAL}"
+export TF_VAR_sendgrid_api_key="${SENDGRID_KEY_VAL}"
 export PROJECT_ID
 export REGION="${REGION:-us-central1}"
 export ENVIRONMENT

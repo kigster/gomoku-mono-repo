@@ -150,8 +150,12 @@ export function useGameState(settings: GameSettings) {
     }
   }, [])
 
-  const startGame = useCallback(async () => {
-    const initial = buildInitialState()
+  const startGame = useCallback(async (gameId?: string) => {
+    // Stamp the server-issued games.id onto the initial state directly
+    // so it survives any subsequent setGameState that spreads from
+    // `prev` (the AI response merge in `sendToServer`, etc.). A
+    // separate setter would race with the AI's first move.
+    const initial: GameState = { ...buildInitialState(), game_id: gameId }
     setGameState(initial)
     setError(null)
     humanTimeAccum.current = 0
@@ -292,6 +296,7 @@ export function useGameState(settings: GameSettings) {
     lastAiMoveMs.current = 0
     turnStartMs.current = 0
   }, [])
+
 
   return {
     board,

@@ -34,7 +34,7 @@ OUT1=$(printf '%s\n' "$SCRIPT1" | "$BRAIN" 2>/dev/null)
 LINES1=()
 while IFS= read -r _line || [[ -n "$_line" ]]; do
   LINES1+=("$_line")
-done <<< "$OUT1"
+done <<<"$OUT1"
 
 # Expect exactly 3 lines: OK, 7,7, then a move adjacent to (7,8).
 if [[ ${#LINES1[@]} -lt 3 ]]; then
@@ -62,7 +62,7 @@ if [[ ! "${LINES1[2]}" =~ ^([0-9]+),([0-9]+)$ ]]; then
 fi
 GX=${BASH_REMATCH[1]}
 GY=${BASH_REMATCH[2]}
-if (( GX < 0 || GX > 14 || GY < 0 || GY > 14 )); then
+if ((GX < 0 || GX > 14 || GY < 0 || GY > 14)); then
   echo "[E2E] FAIL: line 3 move out of bounds: (${GX}, ${GY})" >&2
   exit 1
 fi

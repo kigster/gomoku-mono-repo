@@ -21,10 +21,9 @@ type-checkers flag any new call site that forgets it.
 
 from __future__ import annotations
 
-from typing import Literal
-
 import asyncpg
 
+from app.models.db_tables import MultiplayerCreatedVia, MultiplayerGameRow, StoneColor
 from app.multiplayer.codes import new_code
 
 # Eight retries gives us a (1/729e6)**8 chance of an unrecoverable
@@ -32,7 +31,7 @@ from app.multiplayer.codes import new_code
 # 5xx without changing the user-visible outcome.
 MAX_RETRIES = 8
 
-CreatedVia = Literal["modal", "invite"]
+CreatedVia = MultiplayerCreatedVia | str
 
 
 async def allocate_game(
@@ -40,15 +39,14 @@ async def allocate_game(
     *,
     host_user_id: str,
     created_via: CreatedVia,
-    host_color: Literal["X", "O"] | None = "X",
+    host_color: StoneColor | str | None = StoneColor.X,
     board_size: int = 15,
     color_chosen_by: str = "host",
     intended_guest_id: str | None = None,
-) -> dict:
+) -> MultiplayerGameRow:
     """Insert a new multiplayer_games row with a unique code.
 
-    Returns the inserted row as a dict (callers that only need the
-    code take `row["code"]`). Retries up to MAX_RETRIES times on
+    Returns the inserted row as a typed Pydantic object. Retries up to MAX_RETRIES times on
     UniqueViolationError. Each attempt uses a savepoint so a
     collision doesn't poison the caller's transaction.
 
@@ -64,6 +62,7 @@ async def allocate_game(
         candidate = new_code()
         try:
             async with conn.transaction():
+                # TODO: MOVE THE SQL TO db.py
                 row = await conn.fetchrow(
                     """
                     INSERT INTO multiplayer_games
@@ -80,8 +79,17 @@ async def allocate_game(
                     created_via,
                     intended_guest_id,
                 )
-            if row is not None:
-                return dict(row)
+                # Eagerly create the paired chats row in the SAME
+                # transaction. This is what lets chat-message endpoints
+                # assume the FK target exists without a race against the
+                # first message — see migration 0012's docstring.
+                if row is not None:
+                    await conn.execute(
+                        "INSERT INTO chats (multiplayer_game_id) VALUES ($1::uuid)",
+                        str(row["id"]),
+                    )
+                if row is not None:
+                    return MultiplayerGameRow.model_validate(dict(row))
         except asyncpg.UniqueViolationError as exc:
             last_exc = exc
             continue

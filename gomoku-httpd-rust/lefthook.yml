@@ -1,0 +1,36 @@
+output:
+  - summary
+  - failure
+
+# Quick local gates that mirror the GitHub Actions CI workflow
+# (.github/workflows/ci.yml). Keep these in sync — every step that fails
+# in CI should already have failed here.
+pre-commit:
+  parallel: true
+  jobs:
+    - name: rustfmt
+      run: cargo fmt --all -- --check
+      glob: "*.rs"
+
+    - name: clippy
+      run: cargo clippy --all-targets --all-features -- -D warnings
+      glob: "*.rs"
+
+    - name: cargo test
+      run: cargo test --all-features
+      glob: "*.{rs,toml}"
+
+    - name: cargo doc
+      run: cargo doc --no-deps --document-private-items --quiet
+      env:
+        RUSTDOCFLAGS: "-D warnings"
+      glob: "*.{rs,toml}"
+
+    - name: conflict markers and whitespace
+      run: git --no-pager diff --check
+
+pre-push:
+  parallel: false
+  jobs:
+    - name: integration
+      run: just integration

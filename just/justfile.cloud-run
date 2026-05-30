@@ -1,0 +1,38 @@
+# vim: ft=just
+
+# ─── Cloud Run ────────────────────────────────────────────────────────────────
+
+# Generate a fresh JWT signing secret. Paste into .env as JWT_SECRET=...
+jwt-secret:
+    @openssl rand -base64 32
+
+# Canonical deploy pipeline: production (default) or staging. Reads
+# {ENV}_DATABASE_URL / {ENV}_JWT_SECRET / {ENV}_CUSTOM_DOMAIN from .env and
+# lands each environment in its own Terraform state under
+# gs://gomoku-tfstate/cloud-run/{env}/gomoku.
+#
+#   just deploy             → production (gomoku.us)
+#   just deploy staging     → staging (staging.gomoku.games), min=0/0
+#   bin/gctl start          → local dev (dev.gomoku.games via /etc/hosts)
+
+# Deploy: env → migrations → images → Terraform → Honeycomb deploy marker
+deploy environment="production":
+    bin/deploy {{ environment }}
+
+# (legacy) Terraform-only deploy, no DB migrations. Prefer `just deploy`.
+cr-init: docker-build-all-amd64
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "WARNING: cr-init skips DB migrations. Prefer 'just deploy'."
+    export ENVIRONMENT=production
+    gcloud auth application-default login
+    cd ./iac/cloud_run && bash deploy.sh
+
+# (legacy) Push images + restart services, no migrations. Prefer `just deploy`.
+cr-update: docker-build-all-amd64
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "WARNING: cr-update skips DB migrations. Prefer 'just deploy'."
+    export ENVIRONMENT=production
+    gcloud auth application-default login
+    cd ./iac/cloud_run && bash update.sh

@@ -2,21 +2,24 @@ import { defineConfig } from 'cypress'
 import { Pool } from 'pg'
 
 // e2e config — points at the local cluster (vite dev or nginx).
-//   - CYPRESS_BASE_URL  defaults to http://localhost:5173 (vite)
-//   - CYPRESS_API_BASE  defaults to http://localhost:8000 (FastAPI direct)
-//   - CYPRESS_DB_URL    defaults to the local Postgres dev DB
+//   - CYPRESS_BASE_URL    defaults to http://localhost:5173 (vite)
+//   - CYPRESS_API_BASE    defaults to http://localhost:8000 (FastAPI direct)
+//   - CYPRESS_DB_URL      defaults to the local Postgres dev DB
+//   - POSTGRESQL_PORT     port for the local Postgres (default 5433,
+//                         exported by the repo-root .envrc)
 //
-// All three are overridable from the env so the same suite can be aimed
+// All four are overridable from the env so the same suite can be aimed
 // at the nginx-fronted cluster (https://dev.gomoku.games) by exporting:
 //   CYPRESS_BASE_URL=https://dev.gomoku.games \
 //   CYPRESS_API_BASE=https://dev.gomoku.games \
-//   CYPRESS_DB_URL=postgresql://postgres@127.0.0.1:5432/gomoku
+//   CYPRESS_DB_URL=postgresql://postgres@127.0.0.1:5433/gomoku
 
 const baseUrl = process.env.CYPRESS_BASE_URL || 'http://localhost:5173'
 const apiBase = process.env.CYPRESS_API_BASE || 'http://localhost:8000'
+const port    = process.env.POSTGRESQL_PORT || '5433'
 const dbUrl =
   process.env.CYPRESS_DB_URL ||
-  'postgresql://postgres:postgres@127.0.0.1:5432/gomoku'
+  `postgresql://postgres:postgres@127.0.0.1:${port}/gomoku`
 
 let pool: Pool | null = null
 function db(): Pool {

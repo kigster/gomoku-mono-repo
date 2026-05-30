@@ -18,19 +18,19 @@ gcloud services enable servicenetworking.googleapis.com \
 
 echo "=== Ensuring VPC peering range exists ==="
 gcloud compute addresses describe google-managed-services-${NETWORK} \
-  --global --project="$PROJECT" >/dev/null 2>&1 || \
-gcloud compute addresses create google-managed-services-${NETWORK} \
-  --global --purpose=VPC_PEERING --prefix-length=16 \
-  --network="$NETWORK" --project="$PROJECT"
+  --global --project="$PROJECT" >/dev/null 2>&1 ||
+  gcloud compute addresses create google-managed-services-${NETWORK} \
+    --global --purpose=VPC_PEERING --prefix-length=16 \
+    --network="$NETWORK" --project="$PROJECT"
 
 echo "=== Ensuring VPC peering connection exists ==="
 gcloud services vpc-peerings list \
-  --network="$NETWORK" --project="$PROJECT" 2>/dev/null | \
-  grep -q servicenetworking.googleapis.com || \
-gcloud services vpc-peerings connect \
-  --service=servicenetworking.googleapis.com \
-  --ranges=google-managed-services-${NETWORK} \
-  --network="$NETWORK" --project="$PROJECT"
+  --network="$NETWORK" --project="$PROJECT" 2>/dev/null |
+  grep -q servicenetworking.googleapis.com ||
+  gcloud services vpc-peerings connect \
+    --service=servicenetworking.googleapis.com \
+    --ranges=google-managed-services-${NETWORK} \
+    --network="$NETWORK" --project="$PROJECT"
 
 # ─── Create Instance ─────────────────────────────────────────────────────────
 # PostgreSQL 17 requires Enterprise Plus (~$300/mo minimum).
@@ -68,7 +68,7 @@ gcloud sql connect "$INSTANCE" \
   --project="$PROJECT" \
   --database="$DATABASE" \
   --user=postgres \
-  < "$SCRIPT_DIR/setup.sql"
+  <"$SCRIPT_DIR/setup.sql"
 
 CONN="${PROJECT}:${REGION}:${INSTANCE}"
 

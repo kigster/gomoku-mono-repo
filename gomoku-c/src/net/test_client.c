@@ -99,8 +99,9 @@ typedef struct {
 static void print_board_with_padding(const char *json, int padding, int red_bg);
 static void print_timing_lines(int padding, const char *x_name,
                                const char *o_name, double x_waited,
-                               double x_server, double x_queued, double o_waited,
-                               double o_server, double o_queued);
+                               double x_server, double x_queued,
+                               double o_waited, double o_server,
+                               double o_queued);
 static void timer_tick_fn(void *ctx);
 
 //===============================================================================
@@ -276,7 +277,8 @@ static char *http_post_with_retry(const char *host, int port, const char *path,
         printf("\n");
         print_timing_lines(padding, tick_ctx->x_name, tick_ctx->o_name,
                            x_waited, tick_ctx->timing_x->server_total, x_queued,
-                           o_waited, tick_ctx->timing_o->server_total, o_queued);
+                           o_waited, tick_ctx->timing_o->server_total,
+                           o_queued);
       }
     }
 
@@ -478,13 +480,17 @@ static void print_timing_lines(int padding, const char *x_name,
   // \xe2\x94\xab. Cells after column 1 (Spent/Server/Queue) are 7/8/7
   // chars, matching the data rows below.
   printf("%*s%s", padding, "", COLOR_BOLD_GREEN);
-  for (int i = 0; i < (named ? 11 : 7); i++) printf("\xe2\x94\x81");
+  for (int i = 0; i < (named ? 11 : 7); i++)
+    printf("\xe2\x94\x81");
   printf("\xe2\x95\x8b");
-  for (int i = 0; i < 7; i++) printf("\xe2\x94\x81");
+  for (int i = 0; i < 7; i++)
+    printf("\xe2\x94\x81");
   printf("\xe2\x95\x8b");
-  for (int i = 0; i < 8; i++) printf("\xe2\x94\x81");
+  for (int i = 0; i < 8; i++)
+    printf("\xe2\x94\x81");
   printf("\xe2\x95\x8b");
-  for (int i = 0; i < 7; i++) printf("\xe2\x94\x81");
+  for (int i = 0; i < 7; i++)
+    printf("\xe2\x94\x81");
   printf("\xe2\x94\xab%s\033[K\n", COLOR_RESET);
 
   // Rows. "X (%7.7s)" / "O (%7.7s)" is exactly 11 chars (no trailing
@@ -504,7 +510,8 @@ static void print_timing_lines(int padding, const char *x_name,
            padding, "", COLOR_RED, x_waited, x_server, x_queued, COLOR_RESET);
     printf("%*s%sO      \xe2\x94\x83 %4.0fs \xe2\x94\x83  %4.0fs "
            "\xe2\x94\x83 %4.0fs \xe2\x94\x83%s\033[K\n",
-           padding, "", COLOR_YELLOW, o_waited, o_server, o_queued, COLOR_RESET);
+           padding, "", COLOR_YELLOW, o_waited, o_server, o_queued,
+           COLOR_RESET);
   }
 }
 
@@ -595,7 +602,8 @@ static void print_usage(const char *program) {
   printf("  -p, --port <p[:p]>    Server port, or X:O to talk to two\n");
   printf("                        daemons (X plays X, O plays O).\n");
   printf("                        Default: %d\n", DEFAULT_PORT);
-  printf("      --reverse         Swap the two -p ports: M plays X, N plays O\n");
+  printf(
+      "      --reverse         Swap the two -p ports: M plays X, N plays O\n");
   printf("  -X, --x-name <name>   Display name for X in the timing table\n");
   printf("  -O, --o-name <name>   Display name for O in the timing table\n");
   printf(
@@ -637,19 +645,23 @@ static int parse_depth_arg(const char *optarg, int *depth_x, int *depth_o) {
 //   "N"   → both = N (single-daemon mode)
 //   "N:M" → x = N, o = M
 static int parse_port_arg(const char *optarg, int *port_x, int *port_o) {
-  if (!optarg || !*optarg) return -1;
+  if (!optarg || !*optarg)
+    return -1;
   char *end = NULL;
   long n = strtol(optarg, &end, 10);
-  if (end == optarg || n <= 0 || n > 65535) return -1;
+  if (end == optarg || n <= 0 || n > 65535)
+    return -1;
   if (*end == '\0') {
     *port_x = (int)n;
     *port_o = (int)n;
     return 0;
   }
-  if (*end != ':') return -1;
+  if (*end != ':')
+    return -1;
   const char *second = end + 1;
   long m = strtol(second, &end, 10);
-  if (end == second || *end != '\0' || m <= 0 || m > 65535) return -1;
+  if (end == second || *end != '\0' || m <= 0 || m > 65535)
+    return -1;
   *port_x = (int)n;
   *port_o = (int)m;
   return 0;
@@ -676,20 +688,21 @@ int main(int argc, char *argv[]) {
   // so the getopt_long switch can distinguish them from short flags.
   enum { OPT_REVERSE = 0x100 };
 
-  static struct option long_options[] = {{"host", required_argument, 0, 'h'},
-                                         {"port", required_argument, 0, 'p'},
-                                         {"reverse", no_argument, 0, OPT_REVERSE},
-                                         {"x-name", required_argument, 0, 'X'},
-                                         {"o-name", required_argument, 0, 'O'},
-                                         {"depth", required_argument, 0, 'd'},
-                                         {"radius", required_argument, 0, 'r'},
-                                         {"board", required_argument, 0, 'b'},
-                                         {"timeout", required_argument, 0, 't'},
-                                         {"json", required_argument, 0, 'j'},
-                                         {"quiet", no_argument, 0, 'q'},
-                                         {"verbose", no_argument, 0, 'v'},
-                                         {"help", no_argument, 0, '?'},
-                                         {0, 0, 0, 0}};
+  static struct option long_options[] = {
+      {"host", required_argument, 0, 'h'},
+      {"port", required_argument, 0, 'p'},
+      {"reverse", no_argument, 0, OPT_REVERSE},
+      {"x-name", required_argument, 0, 'X'},
+      {"o-name", required_argument, 0, 'O'},
+      {"depth", required_argument, 0, 'd'},
+      {"radius", required_argument, 0, 'r'},
+      {"board", required_argument, 0, 'b'},
+      {"timeout", required_argument, 0, 't'},
+      {"json", required_argument, 0, 'j'},
+      {"quiet", no_argument, 0, 'q'},
+      {"verbose", no_argument, 0, 'v'},
+      {"help", no_argument, 0, '?'},
+      {0, 0, 0, 0}};
 
   int c;
   while ((c = getopt_long(argc, argv, "h:p:X:O:d:r:b:t:j:qv", long_options,
@@ -778,8 +791,7 @@ int main(int argc, char *argv[]) {
     } else {
       printf("Connecting to two gomoku-http-daemons at %s:%d (X) and %s:%d "
              "(O)%s\n",
-             host, port_x, host, port_o,
-             reverse_ports ? " [reversed]" : "");
+             host, port_x, host, port_o, reverse_ports ? " [reversed]" : "");
       printf("Each daemon plays one side (X depth=%d, O depth=%d, radius=%d, "
              "board=%d)\n\n",
              depth_x, depth_o, radius, board_size);
@@ -874,9 +886,8 @@ int main(int argc, char *argv[]) {
       double o_queued = timing_o.waited_total - timing_o.server_total;
       printf("\n");
       print_timing_lines(3, x_name, o_name, timing_x.waited_total,
-                         timing_x.server_total, x_queued,
-                         timing_o.waited_total, timing_o.server_total,
-                         o_queued);
+                         timing_x.server_total, x_queued, timing_o.waited_total,
+                         timing_o.server_total, o_queued);
     }
 
     move_num++;

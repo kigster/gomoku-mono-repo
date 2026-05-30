@@ -71,6 +71,24 @@ http {
         keepalive 32;
     }
 
+    server {
+        listen 80;
+        server_name localhost;
+
+        location /nginx_status {
+            stub_status on;
+            access_log off;
+            allow 127.0.0.1;        # Permit localhost to view status
+            deny all;               # Restrict public access
+        }
+
+        location /health {
+             access_log off;
+             return 200 '"{ "status": "OK" }';
+             add_header Content-Type application/json;
+        }
+    }
+
     # --- HTTP: redirect to HTTPS ------------------------------------------------
     server {
         listen 80;

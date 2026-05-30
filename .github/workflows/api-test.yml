@@ -32,6 +32,9 @@ jobs:
 
     env:
       ENVIRONMENT: ci
+      # GH Actions' postgres service container always listens on the
+      # standard port; api/app/config.py reads this to build the DSN.
+      POSTGRESQL_PORT: 5432
 
     steps:
       - name: Checkout code

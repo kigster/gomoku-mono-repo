@@ -17,7 +17,6 @@ export ROOT_DIR="$(cd "$SCRIPT_DIR/../../../" && pwd -P)"
 export HTTPD="$ROOT_DIR/gomoku-httpd"
 export TESTS_DIR="$SCRIPT_DIR/expectations"
 
-
 # Store results there.
 export TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 export OUTPUT_DIR="$SCRIPT_DIR/../results"
@@ -52,26 +51,26 @@ usage() {
 function parse.args() {
   while [[ $# -gt 0 ]]; do
     case $1 in
-      -v | --verbose)
-        export VERBOSE=true
-        shift
-        ;;
-      -t | --test)
-        export SINGLE_TEST="$2"
-        shift 2
-        ;;
-      -p | --port)
-        export PORT="$2"
-        shift 2
-        ;;
-      -h | --help)
-        usage
-        exit 0
-        ;;
-      *)
-        echo "Unknown option: $1"
-        exit 1
-        ;;
+    -v | --verbose)
+      export VERBOSE=true
+      shift
+      ;;
+    -t | --test)
+      export SINGLE_TEST="$2"
+      shift 2
+      ;;
+    -p | --port)
+      export PORT="$2"
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      exit 1
+      ;;
     esac
   done
 }
@@ -82,7 +81,7 @@ cursor.back() {
 
 function test_success() {
   h2bg "$@"
-} 
+}
 
 function test_failure() {
   box.black-on-red "$@"
@@ -103,12 +102,12 @@ function check_deps() {
     exit 1
   fi
 
-  if ! command -v curl &> /dev/null; then
+  if ! command -v curl &>/dev/null; then
     error "curl is required"
     exit 1
   fi
 
-  if ! command -v jq &> /dev/null; then
+  if ! command -v jq &>/dev/null; then
     error "jq is required" "Install with: brew install jq"
     exit 1
   fi
@@ -137,8 +136,8 @@ function run_one_test() {
   difficulty=$(jq -r '.difficulty' "$test_file")
 
   test_announce "Test: $name" \
-     "  Category: $category | Difficulty: $difficulty" \
-     "  $description"
+    "  Category: $category | Difficulty: $difficulty" \
+    "  $description"
 
   local response
   response=$(curl -s -X POST "http://127.0.0.1:$PORT/gomoku/play" \
@@ -178,7 +177,7 @@ function run_one_test() {
       ((passed++))
     else
       test_failure "  FAIL: AI played [$move_x, $move_y]" \
-            "        Expected one of: $expected_moves"
+        "        Expected one of: $expected_moves"
       ((failed++))
     fi
   fi
@@ -211,7 +210,7 @@ function run_one_test() {
 
 function run_all_tests() {
   h3bg "TACTICAL TEST SUITE" \
-       "Expectations are in: $TESTS_DIR"
+    "Expectations are in: $TESTS_DIR"
 
   local test_file
   for test_file in $(find $TESTS_DIR -type f -name '*.json'); do
@@ -231,9 +230,9 @@ function run_all_tests() {
 
 function print_summary() {
   h3bg "TACTICAL TESTING RESULTS" \
-   "Total :  $total" \
-   "Passed:  $passed" \
-   "Failed:  $failed"
+    "Total :  $total" \
+    "Passed:  $passed" \
+    "Failed:  $failed"
 
   if [[ $total -gt 0 ]]; then
     local pct

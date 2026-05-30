@@ -1,0 +1,107 @@
+# vim: ft=just
+#
+# Format & format-check recipes per language / sub-repo.
+#
+# `format-*` rewrites files in place. `check-*` exits non-zero if anything
+# would be reformatted — used by CI and by the top-level `just check`.
+# After running `just format`, `just check` must pass.
+#
+# Required tools (added to Brewfile by `just setup`):
+#   clang-format  — C / C++ formatter
+#   shfmt         — shell script formatter
+#   prettier      — TS / JS / JSON / CSS / Markdown formatter
+#   ruff          — Python (via `uv run`, installed per-project)
+#   cargo fmt     — Rust (ships with rustup)
+#
+# Shell discovery: scripts are detected by a `#!/usr/bin/env bash` or
+# `#!/bin/bash` shebang in the first line (so we don't accidentally touch
+# Python or Ruby scripts living next to bash ones).
+
+# ─── C / C++ (gomoku-c) ────────────────────────────────────────────────────────
+
+# Format every C/C++ source under gomoku-c/src and gomoku-c/tests
+format-gomoku-c:
+    @{{ find }} gomoku-c/src gomoku-c/tests \
+        \( -name '*.c' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) \
+        -print0 | xargs -0 clang-format -i
+
+# Verify C/C++ source is properly formatted (no rewrite)
+check-gomoku-c:
+    @{{ find }} gomoku-c/src gomoku-c/tests \
+        \( -name '*.c' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) \
+        -print0 | xargs -0 clang-format --dry-run --Werror
+
+# ─── Rust (gomoku-httpd-rust) ──────────────────────────────────────────────────
+
+# Format Rust sources with `cargo fmt`
+format-rust:
+    cd gomoku-httpd-rust && just fmt
+
+# Verify Rust formatting (cargo fmt --check) and run clippy
+check-rust:
+    cd gomoku-httpd-rust && just fmt-check
+    cd gomoku-httpd-rust && just lint
+
+# ─── Python (api) ──────────────────────────────────────────────────────────────
+
+# Format API Python with ruff (rewrites + applies safe fixes)
+format-api:
+    cd api && uv run --group dev ruff format
+    cd api && uv run --group dev ruff check --fix
+
+# Verify API Python formatting + lints (no rewrite)
+check-api:
+    cd api && uv run --group dev ruff format --check
+    cd api && uv run --group dev ruff check
+
+# ─── TypeScript / React (frontend) ─────────────────────────────────────────────
+
+# Format frontend TS/JS/CSS/JSON with prettier
+format-frontend:
+    prettier --write 'frontend/src/**/*.{ts,tsx,js,jsx,css,json}' 'frontend/cypress/**/*.{ts,js,json}'
+
+# Verify frontend formatting (prettier --check)
+check-frontend:
+    prettier --check 'frontend/src/**/*.{ts,tsx,js,jsx,css,json}' 'frontend/cypress/**/*.{ts,js,json}'
+
+# ─── Shell scripts ─────────────────────────────────────────────────────────────
+
+# Format bash scripts (detected by shebang), excluding vendored dirs
+format-shell:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    {{find}} . \( -type d \( -name '.git' -o -name '.venv' -o -name '.worktrees' \) -prune \) \
+       -o \( -type f -print0 \) \
+    | while IFS= read -r -d '' f; do
+      IFS= read -r line < "$f" 2>/dev/null || continue
+      case $line in
+        '#!'*bash* | '#!'*'/sh' | '#!'*' sh'* ) printf '%s\0' "$f" ;;
+      esac
+    done | xargs shfmt -i 2 -w
+
+# Verify shell script formatting (shfmt -d), excluding vendored dirs
+check-shell:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    rc=0
+    declare -a shell_files
+    shell_files
+
+
+# ─── Markdown ──────────────────────────────────────────────────────────────────
+
+# Format every Markdown file with prettier (respects .gitignore)
+format-markdown:
+    prettier --write '**/*.md' --ignore-path .gitignore
+
+# Verify Markdown formatting (prettier --check)
+check-markdown:
+    prettier --check '**/*.md' --ignore-path .gitignore
+
+# ─── Joiners ───────────────────────────────────────────────────────────────────
+
+# Format every language / sub-repo. After this, `just check` must pass.
+format-all: format-gomoku-c format-rust format-api format-frontend format-shell format-markdown
+
+# Verify all formatting; non-zero on any deviation. Used by `just ci`.
+check-all: check-gomoku-c check-rust check-api check-frontend check-shell check-markdown

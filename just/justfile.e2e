@@ -1,0 +1,23 @@
+# vim: ft=just
+#
+# End-to-end (Cypress) tests. Restarts the local cluster from a known state
+# first; `gctl stop` is a no-op if nothing's up and `gctl start` is
+# idempotent.
+#
+# Override the targets with CYPRESS_BASE_URL / CYPRESS_API_BASE /
+# CYPRESS_DB_URL to point at dev.gomoku.games or another deployment; in
+# that case skip this recipe and run cypress directly:
+#   cd frontend && npx cypress run --e2e
+#
+# Per the user's convention, this file does not define an `e2e-all`
+# joiner — `e2e` is the only entry point.
+
+# End-to-end tests: restart local cluster + run cypress against frontend
+e2e:
+    export SECRET="$(cat .secret)"; \
+    bin/gctl stop || true; \
+    bin/gctl start || exit $?; \
+    cd frontend && npx cypress run --e2e
+
+alias test-cypress := e2e
+alias test-e2e := e2e

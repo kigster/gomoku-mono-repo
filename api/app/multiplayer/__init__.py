@@ -1,7 +1,8 @@
 """Helpers for the human-vs-human multiplayer feature.
 
-See `doc/human-vs-human-plan.md` for the design. Keep this package
-side-effect free so importing it doesn't require a DB pool.
+See `.features/003.multiplayer-architecture-and-data-model.done/plan.md`
+for the design. Keep this package side-effect free so importing it doesn't
+require a DB pool.
 """
 
 from app.multiplayer.allocate import MAX_RETRIES, allocate_game

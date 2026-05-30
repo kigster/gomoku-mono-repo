@@ -9,13 +9,13 @@ Adds:
 - The `multiplayer_games` table itself, with `expires_at` (15 minute TTL
   on `waiting`), `color_chosen_by` ('host' / 'guest'), nullable
   `host_color`, and a `cancelled` state value alongside the existing
-  states. See `doc/multiplayer-modal-plan.md` §2.
+  states. See `.features/009.choose-game-type-modal-and-invite-link.done/plan.md` §2.
 - A `game_type` discriminator column on the existing `games` table
   ('ai' default, 'multiplayer' for finished human-vs-human rows). The
   original CHECK constraints on `depth`, `radius`, `total_moves` are
   preserved and made conditional on `game_type = 'ai'` — multiplayer
   rows write `0/0/0` sentinels without violating AI-game invariants.
-  See `doc/multiplayer-bugs.md` item #1.
+  See `.features/008.multiplayer-pr-hardening-checklist.done/plan.md` item #1.
 """
 
 from collections.abc import Sequence

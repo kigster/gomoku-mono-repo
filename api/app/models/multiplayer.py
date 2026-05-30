@@ -45,7 +45,7 @@ class MoveRequest(BaseModel):
     `board_size - 1` and is checked in the handler so we never disagree
     with the actual board dimensions and we always emit a single,
     consistent 400 `out_of_bounds` for OOB cases (see
-    `doc/multiplayer-bugs.md` item #7).
+    `.features/008.multiplayer-pr-hardening-checklist.done/plan.md` item #7).
     """
 
     x: int = Field(ge=0)
@@ -59,8 +59,6 @@ class ResignRequest(BaseModel):
 
 class CancelRequest(BaseModel):
     """Body of POST /multiplayer/{code}/cancel — empty placeholder."""
-
-    pass
 
 
 # --- Response shapes --------------------------------------------------------

@@ -28,7 +28,7 @@
 
 // Default search depth. We use 5 (not 7) deliberately:
 //
-// The engine's find_best_ai_move pipeline (see doc/ai-engine.md §1) handles
+// The engine's find_best_ai_move pipeline (see reference/c-engine-ai-algorithm-deep-dive.md §1) handles
 // every meaningful tactical situation BEFORE minimax via Steps 1-6: own
 // winning move, blocking opponent's win, compound threats, VCT search,
 // blocking open threes, playing forcing fours. Depth only matters for

@@ -41,12 +41,13 @@ HTTPSERVER_PLATFORM 	= -DKQUEUE
 else
 HTTPSERVER_PLATFORM	= -DEPOLL
 endif
+# Test HTTP client
+DAEMON_CLIENT_TARGET 	= $(BINDIR)/$(DAEMON_CLIENT)
+
 DAEMON_CFLAGS    	= $(CFLAGS) -I$(HTTPSERVER_DIR) $(HTTPSERVER_PLATFORM)
 
 DEFAULT_ALL		= $(TARGET) $(DAEMON_TARGET) $(DAEMON_CLIENT_TARGET)
 
-# Test HTTP client
-DAEMON_CLIENT_TARGET 	= $(BINDIR)/$(DAEMON_CLIENT)
 
 TEST_HTTP_SRC    	= src/net/test_client.c src/net/test_client_utils.c
 
@@ -57,9 +58,11 @@ TEST_OBJECTS    	= $(TEST_SOURCES:.cpp=.o)
 GTEST_LIB       	= tests/googletest/build/lib/libgtest.a
 GTEST_MAIN_LIB  	= tests/googletest/build/lib/libgtest_main.a
 
+FIND                    = /usr/bin/find
+
 # Daemon test configuration
-DAEMON_TEST_TARGET = $(BINDIR)/test_daemon
-DAEMON_TEST_CXXFLAGS = $(ALL_CXXFLAGS)
+DAEMON_TEST_TARGET 	= $(BINDIR)/test_daemon
+DAEMON_TEST_CXXFLAGS 	= $(ALL_CXXFLAGS)
 
 # Gomocup brain configuration
 #
@@ -75,10 +78,7 @@ GOMOCUP_OBJS       = $(GOMOCUP_DIR)/main.o $(GOMOCUP_DIR)/protocol.o $(GOMOCUP_D
 GOMOCUP_TEST_TARGET= $(BINDIR)/test_gomocup
 GOMOCUP_TEST_CXXFLAGS = -Wall -Wunused-parameter -Wextra -std=c++17 -I$(GOMOCUP_DIR) -Itests/googletest/googletest/include -O2 $(MACOS_CXX_INCLUDE)
 
-# CMake build directory
-BUILD_DIR = build
-
-.PHONY: all clean test tests rebuild json-c gomoku-httpd googletest test-client test-daemon cmake-clean gomocup pbrain-kig-standard test-gomocup-e2e gomocup-win pbrain-kig-standard-x86-64.exe pbrain-kig-standard-x86-32.exe gomocup-zip
+.PHONY: all clean test tests rebuild json-c gomoku-httpd googletest test-client test-daemon gomocup pbrain-kig-standard test-gomocup-e2e gomocup-win pbrain-kig-standard-x86-64.exe pbrain-kig-standard-x86-32.exe gomocup-zip
 
 $(BINDIR):
 		@mkdir -p $(BINDIR)
@@ -224,10 +224,10 @@ gomocup-zip: gomocup-win
 		@printf 'Git SHA: %s\n' "$$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" >> $(BINDIR)/README.txt
 		@printf 'Built  : %s\n' "$$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $(BINDIR)/README.txt
 		@printf '\nFiles:\n' >> $(BINDIR)/README.txt
-		@printf '  pbrain-kig-standard-x86-64.exe Win64 brain (filename contains "64" per Gomocup rule)\n' >> $(BINDIR)/README.txt
+		@printf '  pbrain-kig-standard-x86-64.exe Win64 brain (filename with "64" per Gomocup rule)\n' >> $(BINDIR)/README.txt
 		@printf '  pbrain-kig-standard-x86-32.exe Win32 brain\n' >> $(BINDIR)/README.txt
-		rm -f $(BINDIR)/pbrain-kig-standard.zip
-		zip -j $(BINDIR)/pbrain-kig-standard.zip \
+		rm -f   $(BINDIR)/pbrain-kig-standard.zip
+		zip -j  $(BINDIR)/pbrain-kig-standard.zip \
 			$(BINDIR)/pbrain-kig-standard-x86-64.exe \
 			$(BINDIR)/pbrain-kig-standard-x86-32.exe \
 			$(BINDIR)/README.txt
@@ -245,17 +245,16 @@ tests/gomocup_test.o: googletest tests/gomocup_test.cpp $(GOMOCUP_DIR)/protocol.
 test-daemon: 	$(DAEMON_TEST_TARGET)
 		./$(DAEMON_TEST_TARGET) | GREP_COLOR=32 grep --color=always -E 'Daemon[A-Za-z]*Test\.([A-Za-z_]*)|tests|results|PASSED|FAILED'
 
-clean:  	cmake-clean
+clean:
 		rm -rf $(BINDIR)
 		rm -f $(OBJECTS) tests/gomoku_test.o
 		rm -f $(DAEMON_CORE) $(DAEMON_NET) src/net/test_client_utils.o tests/daemon_test.o
 		rm -f $(GOMOCUP_OBJS) $(GOMOCUP_CORE_OBJS) tests/gomocup_test.o
 		rm -rf tests/googletest
-		find . -name '*.a' -type f -delete || true
+		$(FIND) . -name '*.a' -type f -delete || true
+		$(FIND) . -name '.DS_Store' -type f -delete || true
 
-cmake-clean:
-		rm -rf $(BUILD_DIR)
-		find . -name CMakeCache.txt -delete || true
-		find . -name CMakeFiles -type d -exec rm -rf {} \; || true
-		find . -name cmake_install.cmake -type d -exec rm -rf {} \; || true
-		true
+format:
+		$(FIND) src/gomoku src/net -maxdepth 3 -name '*.c**' | xargs clang-format -i
+		$(FIND) tests -maxdepth 3 -name '*.c**' | xargs clang-format -i
+

@@ -41,7 +41,7 @@ interface Props {
   onGuestJoined: (code: string) => void
   /**
    * Modal closed without a started multiplayer game. Caller should drop
-   * the user into the AI flow per `doc/multiplayer-modal-plan.md` §1.
+   * the user into the AI flow per `.features/009.choose-game-type-modal-and-invite-link.done/plan.md` §1.
    */
   onClose: () => void
 }

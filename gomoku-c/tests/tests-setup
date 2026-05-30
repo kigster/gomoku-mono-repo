@@ -10,13 +10,13 @@ os="$(uname -s | tr 'A-Z' 'a-z')"
 
 if [[ $os == darwin ]]; then
   command -v clang >/dev/null || sudo xcode-select --install
-  command -v gcc >/dev/null   || brew install gcc
+  command -v gcc >/dev/null || brew install gcc
   command -v cmake >/dev/null || brew install cmake
 elif [[ $os == linux ]]; then
   command -v gcc || {
     sudo apt-get update -yqq
-      sudo apt-get install build-essential -yqq
-    }
+    sudo apt-get install build-essential -yqq
+  }
 fi
 
 command -v cmake >/dev/null || {

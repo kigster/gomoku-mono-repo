@@ -101,8 +101,8 @@ static_resources:
 HEADER
 
 for ((i = 0; i < WORKERS; i++)); do
-	port=$((BASE_PORT + i))
-	cat <<EOF
+  port=$((BASE_PORT + i))
+  cat <<EOF
               # gomoku-httpd instance $((i + 1))
               - endpoint:
                   address:

@@ -1,9 +1,10 @@
 """Failing test suite for the human-vs-human multiplayer API.
 
 Stage 2 of the four-stage agent workflow per
-`doc/human-vs-human-plan.md` §9. These tests are intentionally red right now
-because Stage 3 has not yet implemented the routes/migration. Once Stage 3
-makes them green, do not modify them.
+`.features/003.multiplayer-architecture-and-data-model.done/plan.md` §9.
+These tests are intentionally red right now because Stage 3 has not yet
+implemented the routes/migration. Once Stage 3 makes them green, do not
+modify them.
 
 Coverage matrix (cross-checked against plan §4 + §5):
 
@@ -29,6 +30,8 @@ import asyncpg
 import pytest
 from httpx import AsyncClient
 
+from app.exceptions import HTTPResponseException
+from app.routers import multiplayer as multiplayer_router
 from tests.conftest import TEST_DSN
 
 # ---------------------------------------------------------------------------
@@ -168,6 +171,19 @@ async def test_new_game_codes_are_unique(client: AsyncClient, auth_headers):
     a = await _create_game(client, auth_headers)
     b = await _create_game(client, auth_headers)
     assert a["code"] != b["code"]
+
+
+@pytest.mark.asyncio
+async def test_middleware_converts_http_response_exception(
+    client: AsyncClient, auth_headers, monkeypatch
+):
+    async def _boom(*_args: object, **_kwargs: object) -> dict:
+        raise HTTPResponseException(418, "middleware_translation_ok")
+
+    monkeypatch.setattr(multiplayer_router, "allocate_game", _boom)
+    resp = await client.post("/multiplayer/new", headers=auth_headers, json={})
+    assert resp.status_code == 418
+    assert resp.json()["detail"] == "middleware_translation_ok"
 
 
 # ---------------------------------------------------------------------------
@@ -331,12 +347,10 @@ async def test_get_game_unknown_code_returns_404(client: AsyncClient, auth_heade
 
 
 @pytest.mark.asyncio
-async def test_get_game_since_version_returns_304(client: AsyncClient, auth_headers):
-    """Plan §4: GET supports HTTP conditional fetch via ?since_version=N.
-
-    When `since_version >= current.version`, the server returns 304 with no
-    body. This is what makes the 1.5 s polling loop cheap.
-    """
+async def test_get_game_since_version_returns_304_by_default(client: AsyncClient, auth_headers):
+    """Legacy contract — when no opt-in header is sent, the server returns
+    HTTP 304 for `since_version >= current.version`. Deployed clients
+    predate the no-change sentinel and depend on this behaviour."""
     created = await _create_game(client, auth_headers)
     code = created["code"]
     current_version = created["version"]  # 0 for a fresh game
@@ -345,8 +359,30 @@ async def test_get_game_since_version_returns_304(client: AsyncClient, auth_head
         f"/multiplayer/{code}?since_version={current_version}", headers=auth_headers
     )
     assert resp.status_code == 304
-    # 304 must not have a body.
     assert resp.content in (b"", None)
+
+
+@pytest.mark.asyncio
+async def test_get_game_since_version_returns_no_change_sentinel_when_opted_in(
+    client: AsyncClient, auth_headers
+):
+    """When the client sends `X-Accept-No-Change: 1`, the server replies 200
+    with the `{no_change: true, version: N}` sentinel instead of HTTP 304.
+
+    This avoids the Chrome "Fetch failed loading" protocol-error spam that a
+    304 produces when the request didn't carry conditional-request
+    validators. The two response shapes coexist so the backend can be rolled
+    out independently of the frontend.
+    """
+    created = await _create_game(client, auth_headers)
+    code = created["code"]
+    current_version = created["version"]  # 0 for a fresh game
+
+    headers = {**auth_headers, "X-Accept-No-Change": "1"}
+    resp = await client.get(f"/multiplayer/{code}?since_version={current_version}", headers=headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body == {"no_change": True, "version": current_version}
 
 
 @pytest.mark.asyncio
@@ -876,7 +912,7 @@ async def test_move_after_finished_is_409(
 
 # ---------------------------------------------------------------------------
 # Modal/invite flow — host_color=null (guest chooses), cancel, expiry
-# (see doc/multiplayer-modal-plan.md)
+# (see .features/009.choose-game-type-modal-and-invite-link.done/plan.md)
 # ---------------------------------------------------------------------------
 
 
@@ -1098,8 +1134,9 @@ async def test_move_oob_uses_400_not_422_for_high_coords(
 ):
     """A 15-board move at x=15 must come back as 400 out_of_bounds, not 422.
 
-    Per doc/multiplayer-bugs.md item #7 — the wire contract is one
-    consistent OOB status, not a mix of Pydantic 422 / handler 400.
+    Per .features/008.multiplayer-pr-hardening-checklist.done/plan.md
+    item #7 — the wire contract is one consistent OOB status, not a mix
+    of Pydantic 422 / handler 400.
     """
     game = await _start_in_progress_game(
         client, auth_headers, second_registered_user["headers"], board_size=15

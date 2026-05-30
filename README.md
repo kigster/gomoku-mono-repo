@@ -1,37 +1,51 @@
-[![C99 Test Suite](https://github.com/kigster/gomoku-ansi-c/actions/workflows/c99.yml/badge.svg)](https://github.com/kigster/gomoku-ansi-c/actions/workflows/c99.yml) [![API Tests](https://github.com/kigster/gomoku-ansi-c/actions/workflows/api-test.yml/badge.svg)](https://github.com/kigster/gomoku-ansi-c/actions/workflows/api-test.yml) [![API Lint](https://github.com/kigster/gomoku-ansi-c/actions/workflows/api-lint.yml/badge.svg)](https://github.com/kigster/gomoku-ansi-c/actions/workflows/api-lint.yml) [![Frontend Tests](https://github.com/kigster/gomoku-ansi-c/actions/workflows/frontend.yml/badge.svg)](https://github.com/kigster/gomoku-ansi-c/actions/workflows/frontend.yml)
+[![C99 Test Suite](https://github.com/kigster/gomoku-mono-repo/actions/workflows/c99.yml/badge.svg)](https://github.com/kigster/gomoku-mono-repo/actions/workflows/c99.yml) [![API Tests](https://github.com/kigster/gomoku-mono-repo/actions/workflows/api-test.yml/badge.svg)](https://github.com/kigster/gomoku-mono-repo/actions/workflows/api-test.yml) [![API Lint](https://github.com/kigster/gomoku-mono-repo/actions/workflows/api-lint.yml/badge.svg)](https://github.com/kigster/gomoku-mono-repo/actions/workflows/api-lint.yml) [![Frontend Tests](https://github.com/kigster/gomoku-mono-repo/actions/workflows/frontend.yml/badge.svg)](https://github.com/kigster/gomoku-mono-repo/actions/workflows/frontend.yml)
 
 # Gomoku (Five-in-a-Row)
 
+Welcome to the monorepo that builds several kinds of Gomoku executables, adjacent features, testing clients, and Gomocup entry built for Win32/Win64.
+
+This monorepo contains of several components written in more than a few languages to create a multi-purpose Gomoku repository.By _multipurpuse_ we mean thst the following can be built after cloing the repo and running the setup:
+
+> [!NOTE]
+>
+> Tools required: given that there is a `Brewfile` at the root of the project, just running `brew bundle` will get you most of the Brew dependencies and tooling used on MacOSX.
+
+## The Components of the Mono Repo
+
+1. A **Fast TUI Executable** `./bin/gomoku` compiles on any system that has a C99-compaatible compiler\*\*, TTY Terminal Gomoku Game and the logic "brain". This module is what plays as "AI" against humans, and so it's written in C to optimize the performance.
+
+1. **Full Multi-User, User vs AI distributed Web Version with user accounts, persistence, and Elo-based score computation.**
+
+- This version reuses the AI from the TUI gomoku (above), but does not use any of the TTY UI functions
+
+- instead, the C side focuses on building a long-running daemon server: `gomoku-httpd` — a headless AI "brain" that responds to the JSON API (which gets validated by the JSON schema validator in `schema_validator` folder.
+
+- A ReactJS SPA that uses `vite` in development, and `NextJS` build in the production, dumped into the `api/public` folder as static HTML/CSS/JS package.
+
+- That static content is served diligently by the multipurpose **FastAPI Python server**, which here it performs three-four main functions:
+
+  1. it serves static assets including index.html and the SPA code
+  1. it responds to a rich REST API to create and authenticate users, store their games, facilitate human on human games as well as human vs AI. It also responds to health checks to communicate to Google Cloud that all is good in the neighbourhood.
+  1. it proxies the game related calls from ReactJS side (GET and POST to /game/\*) to the `gomoku-httpd` backend that runs in it's own container, and is only booted when the game is initiated.
+  1. In the close future, a user may chose to play against a much faster multi-core Rust implementation: [`gomoku-rust-httpd`](https://github.com/kigster/gomoku-rust-httpd) of the same game AI engine. When the executable has access to 10 vCPU cores, it runs nearly 10x faster that C-based binary. It's also has a few additinoal performance imrovements, so it's play may be somewhat different. Considering this will need access to some compute resouces, I may try to figure out how much such a game on a Docker conainer with 10x vCPUs cost, and turn that in a paid tier. It will still be only a few bucks a month to cover the costs, but that one might be worthwhile paying for.
+
+- that sits in gets deployed to a cloud and runs. Play online at **[gomoku.games](https://app.gomoku.games)**. You can play with another human, or you can play against the AI.
+
 > [!IMPORTANT]
 >
-> There is a [Rust port of `gomoku-httpd`](https://github.com/kigster/gomoku-rust-httpd). This is the binary that works as a stateless C-based AI "brain" so to speak, and receive the entire game state as JSON. To make a move, a new move appended to the move list and the JSON returned to the called. The interfaces via HTTP and JSON uses JSON schema in the `config` folder of this repo.
-
-Welcome to the monorepo that builds several kinds of Gomoku executables, adjacent features, 
-testing clients, and Gomocup entry built for Win32/Win64. 
-
-This monorepo contains at least five or six languages to create a multi-purpose Gomoku repository.
-
-By _multipurpuse_ we mean thst the following can be built by cloning this repo:
-
-This is a monorepo that contains at least five or six languages to create multi-purpose Gomoku repsotory.
-
-The following can be built by cloning this repo:
-
-1. A **Fast TUI Executable** `./bin/gomoku` compiles on any system that has a C99-compaatible compiler**, TTY Terminal Gomoku Game and the logic "brain". This module is what plays as "AI" against humans, and so it's written in C to optimize the performance. 
-
-2. **Full multi-user tournament-ready web version.** — This version gets deployed to a cloud and runs. Play online at **[gomoku.games](https://app.gomoku.games)**. You can play with another human, or you can play against the AI.
-
-> [!IMPORTANT]
-> 
 > The public production URL will soon migrate to https://gomoku.us
 
-  The distributed game architecture is much different than a single-binery TUI version:
+The distributed game architecture is much different than a single-binery TUI version:
 
-  - A ReactJS frontend compiled into static HTML/CSS/JSS SPA (at least 1 container is always running)
-  - A Python/Pydantic-based FastAPI backend, that uses `pg-async` library, and provides Alembic migrations, and a proper peristence mechanism
-  - A C-based binary `gomoku-httpd` which, unlike `gomoku` has no UI and is meant to run as an httpd daemon. However, this service is very special in a sense that it's listening on a particular port. Each process can only handle a single move at a time, so you should run as many of those as you expect concurrent players (although putting envoy proxy in front of gomoku-httpd might help shrink it a litle bit). Google Run handles this automatically
+- A ReactJS frontend compiled into static HTML/CSS/JSS SPA (at least 1 container is always running)
+- A Python/Pydantic-based FastAPI backend, that uses `pg-async` library, and provides Alembic migrations, and a proper peristence mechanism
+- A C-based binary `gomoku-httpd` which, unlike `gomoku` has no UI and is meant to run as an httpd daemon. However, this service is very special in a sense that it's listening on a particular port. Each process can only handle a single move at a time, so you should run as many of those as you expect concurrent players (although putting envoy proxy in front of gomoku-httpd might help shrink it a litle bit). Google Run handles this automatically
 
 3. [Gomocup](https://gomocup.org) compatible binaries are also provided, to engage in this competition.
+
+> [!IMPORTANT]
+>
+> 4. There is a [Rust port of `gomoku-httpd`](https://github.com/kigster/gomoku-rust-httpd). This is the binary that works as a stateless C-based AI "brain" so to speak, and receive the entire game state as JSON. To make a move, a new move appended to the move list and the JSON returned to the called. The interfaces via HTTP and JSON uses JSON schema in the `config` folder of this repo.
 
 ## Going a bit Deeper
 
@@ -39,66 +53,87 @@ This monorepo ships **four ways to play** the same Gomoku engine, all backed by 
 
 | # | Mode | Where you play | Deep dive |
 |---|---|---|---|
-| 1 | Human vs AI in the terminal (TUI) | `bin/gomoku` on your machine | [doc/01-human-vs-ai-tui.md](doc/01-human-vs-ai-tui.md) |
-| 2 | Human vs AI on the web | <https://app.gomoku.games> | [doc/02-human-vs-ai-web.md](doc/02-human-vs-ai-web.md) |
-| 3 | Human vs Human on the web | Invite link, both players in browser | [doc/03-human-vs-human-web.md](doc/03-human-vs-human-web.md) |
-| 4 | Gomocup tournament brain | `pbrain-kig-standard*.exe` submitted to <https://gomocup.org/> | [doc/04-gomocup-submission.md](doc/04-gomocup-submission.md) |
+| 1 | Human vs AI in the terminal (TUI) | `bin/gomoku` on your machine | [.features/004.terminal-ai-game-binary.done/spec.md](.features/004.terminal-ai-game-binary.done/spec.md) |
+| 2 | Human vs AI on the web | <https://app.gomoku.games> | [.features/005.web-spa-ai-game-flow.done/spec.md](.features/005.web-spa-ai-game-flow.done/spec.md) |
+| 3 | Human vs Human on the web | Invite link, both players in browser | [.features/006.web-multiplayer-invite-flow.done/spec.md](.features/006.web-multiplayer-invite-flow.done/spec.md) |
+| 4 | Gomocup tournament brain | `pbrain-kig-standard*.exe` submitted to <https://gomocup.org/> | [.features/007.pbrain-gomocup-tournament-submission.done/spec.md](.features/007.pbrain-gomocup-tournament-submission.done/spec.md) |
 
 The sections that follow give a one-paragraph orientation for each. Click through to the linked doc for the long form.
 
 ### 1. Human vs AI in the Terminal (TUI)
 
-A single ANSI-coloured C99 binary (`bin/gomoku`) with **zero runtime dependencies**. 
+A single ANSI-coloured C99 binary (`bin/gomoku`) with **zero runtime dependencies**.
 
 - Arrow keys to move, `Space`/`Enter` to place,
-`u` to undo, `q` to quit. 
+  `u` to undo, `q` to quit.
 
 - Strength pf play is controlled by `--depth`
-(1–10 plies of alpha-beta look-ahead) and `--radius` (1–5 cells around existing stones the candidate generator considers); a wall clock cap is set with `--timeout`. Saves and replays games as JSON
+  (1–10 plies of alpha-beta look-ahead) and `--radius` (1–5 cells around existing stones the candidate generator considers); a wall clock cap is set with `--timeout`. Saves and replays games as JSON
 
 - (`-j FILE` / `-p FILE`), including AI-vs-AI runs in headless mode
 
 - (`-q`). Build with `just build-game`. Full CLI reference in
 
-[doc/01-human-vs-ai-tui.md](doc/01-human-vs-ai-tui.md).
+[.features/004.terminal-ai-game-binary.done/spec.md](.features/004.terminal-ai-game-binary.done/spec.md).
 
-<img src="doc/img/gomoku-human-vs-ai.png" width="700" border="1" style="border-radius: 10px"/>
+<img src=".features/img/gomoku-human-vs-ai.png" width="700" border="1" style="border-radius: 10px"/>
 
 ### 2. Human vs AI on the Web
 
 A React SPA fronts the same C engine; FastAPI proxies each move to a pool of stateless `gomoku-httpd` workers behind envoy, while PostgreSQL holds users, history, and the leaderboard. The Settings panel exposes the same **depth** (2–5 in the web flow, capped to keep moves responsive) and **radius** (1–4) knobs as the TUI, plus an optional per-move **timeout** (30/60/120/300 seconds). Difficulty maps
-straight to AI strength: depth 5 with radius 3 is the upper "competent club player" tier, and depth 2 is "novice". Wins update your Elo against the AI tier you played; losses cost you Elo symmetrically. Full flow, screenshots, and API list in availabable in this document: 
-[doc/02-human-vs-ai-web.md](doc/02-human-vs-ai-web.md).
+straight to AI strength: depth 5 with radius 3 is the upper "competent club player" tier, and depth 2 is "novice". Wins update your Elo against the AI tier you played; losses cost you Elo symmetrically. Full flow, screenshots, and API list in availabable in this document:
+[.features/005.web-spa-ai-game-flow.done/spec.md](.features/005.web-spa-ai-game-flow.done/spec.md).
 
-<img src="doc/img/gomoku-web-version.png" width="700" border="1" style="border-radius: 10px"/>
+<img src=".features/img/gomoku-web-version.png" width="700" border="1" style="border-radius: 10px"/>
 
 ### 3. Human vs Human on the Web
 
-Two authenticated users play each other over a shared 6-character invite link (`/play/AB7K3X`). The host generates the link from the **New Multiplayer Game** modal — both the URL and the bare code are copyable, and the host can either pick the colour up front or defer to the guest. Invites expire after **15 minutes**. 
+Two authenticated users play each other over a shared 6-character invite link (`/play/AB7K3X`). The host generates the link from the **New Multiplayer Game** modal — both the URL and the bare code are copyable, and the host can either pick the colour up front or defer to the guest. Invites expire after **15 minutes**.
 
 #### Inplementation Note
 
 There are no websockets (yet); both clients short-poll a single `multiplayer_games` row on a wall-clock-tiered cadence (300 ms for the first 10 min, then
 2/3/5 s) with optimistic concurrency on a per-row version counter. Win/loss surfaces in-game and writes two cross-linked `games` rows that show up in both players' history. Multiplayer games rate against your **opponent's actual Elo** rather than an AI tier — see
-[doc/03-human-vs-human-web.md](doc/03-human-vs-human-web.md).
+[.features/006.web-multiplayer-invite-flow.done/spec.md](.features/006.web-multiplayer-invite-flow.done/spec.md).
 
-<img src="doc/img/gomoku-web-menu.png" width="700" border="1" style="border-radius: 10px"/>
+<img src=".features/img/gomoku-web-menu.png" width="700" border="1" style="border-radius: 10px"/>
 
 ### 4. Gomocup Tournament Submission
 
-`pbrain-kig-standard` is a Gomocup-protocol brain wrapping the same engine, targeting the **Standard** category at <https://gomocup.org/>, (15×15 board, exact five-in-a-row, overlines do not win). 
+`pbrain-kig-standard` is a Gomocup-protocol brain wrapping the same engine, targeting the **Standard** category at <https://gomocup.org/>, (15×15 board, exact five-in-a-row, overlines do not win).
 
 Native binary builds with `make pbrain-kig-standard`; cross-compiled Win64 and Win32 `.exe` files with `make gomocup-win`; submission ZIP with `make gomocup-zip`. Default search depth is 5, radius 3, with a 200 ms safety margin under the manager's deadline.
 
 The brain links the engine with `-DNO_JSON` so it has zero dependencies. See
-[doc/04-gomocup-submission.md](doc/04-gomocup-submission.md) for build, packaging, and submission detail.
+[.features/007.pbrain-gomocup-tournament-submission.done/spec.md](.features/007.pbrain-gomocup-tournament-submission.done/spec.md) for build, packaging, and submission detail.
 
 ### Rating system
 
 All four modes feed into a unified rating system that mirrors **Gomocup's own**: [BayesElo](https://link.springer.com/chapter/10.1007/978-3-540-87608-3_11) with `eloAdvantage=0`, `eloDraw=0.01`, default prior — exactly the parameters Gomocup uses to rank submitted brains. AI tiers are first-class rated subjects (so a win against a depth-5 AI grants more rating than a win against depth-2),
-and human-vs-human games rate against the opponent's actual Elo. A weekly batch job re-fits the entire history with BayesElo so live classical-Elo updates converge on the canonical numbers. Design and rollout in [doc/gomocup-elo-rankings.md](doc/gomocup-elo-rankings.md).
+and human-vs-human games rate against the opponent's actual Elo. A weekly batch job re-fits the entire history with BayesElo so live classical-Elo updates converge on the canonical numbers. Design and rollout in [reference/gomocup-bayesian-elo-system.md](reference/gomocup-bayesian-elo-system.md).
 
----
+### Latest features (since the last README refresh)
+
+- **Rust HTTP daemon.** A drop-in Rust port of `gomoku-httpd` lives in
+  [`gomoku-httpd-rust/`](gomoku-httpd-rust/); flip the local cluster onto
+  it with `GOMOKU_HTTPD_RUST=1 bin/gctl start -r`. The Rust binary picks
+  up Honeycomb / OpenTelemetry traces just like its C counterpart.
+- **In-game chat + online presence.** Multiplayer games now ship with a
+  persistent chat panel, an `online_users` view, and slash-commands
+  (`/invite @user`, `/who [@user…]`). See the chat-related routes in
+  `api/app/routers/` and `frontend/src/components/ChatPanel.tsx`.
+- **Branded password-reset email** delivered via SendGrid when
+  `EMAIL_PROVIDER=sendgrid`; `stdout` fallback in dev.
+- **AI game lifecycle**: explicit start / play / save endpoints with Elo
+  delta returned on `/game/save`.
+- **Feature workflow.** Every new change lives under
+  [`.features/NNN.<slug>[.done]/`](.features/) with `spec.md` (human-
+  authored) + `plan.md` (AI-authored). Long-form references migrated to
+  [`reference/`](reference/). See the **Feature workflow** section of
+  [`CLAUDE.md`](CLAUDE.md) for the orchestration model (Zeus architect,
+  Jeff Dean reviewer, web-design agent).
+
+______________________________________________________________________
 
 ## 1. Build and Play the Terminal Game (TUI)
 
@@ -172,14 +207,14 @@ just eval-tournament    # AI vs AI depth tournament (depths 2,3,4)
 just evals-ruby         # Ruby tournament against httpd cluster via envoy
 ```
 
-See [doc/ai-engine.md](doc/ai-engine.md) for algorithm details and threat scoring.
+See [reference/c-engine-ai-algorithm-deep-dive.md](reference/c-engine-ai-algorithm-deep-dive.md) for algorithm details and threat scoring.
 
----
+______________________________________________________________________
 
 ## 2. Run the Networked Cluster Locally
 
 > [!IMPORTANT]
-> 
+>
 > This is how you might want to run the web version locally on your mac laptop.
 
 The full stack runs on your dev machine: nginx for TLS, envoy for load balancing across a pool of `gomoku-httpd` workers, FastAPI for auth/scoring/leaderboard, and a Vite dev server for the React frontend.
@@ -206,7 +241,7 @@ bin/gctl setup  # Installs deps, creates log files, generates local SSL certs (m
 This runs four sub-setup steps: installs packages (`clang-format`, `shfmt`, `btop`, etc.), creates log files under `/var/log/`, generates SSL certs for `dev.gomoku.games`, and configures envoy/nginx templates.
 
 > [!NOTE]
-> 
+>
 > Please add dev.gomoku.games to your `/etc/hosts` file mapped to 127.0.0.1
 
 ### Create the Database
@@ -288,7 +323,7 @@ graph TB
     style PG fill:#7B68EE,color:#fff
 ```
 
-Each `gomoku-httpd` worker is single-threaded, so envoy distributes requests across the pool using least-request load balancing. See [doc/deployment.md](doc/deployment.md) for the full local cluster guide.
+Each `gomoku-httpd` worker is single-threaded, so envoy distributes requests across the pool using least-request load balancing. See [reference/deployment-architecture.md](reference/deployment-architecture.md) for the full local cluster guide.
 
 ### `justfile` Recipes
 
@@ -306,7 +341,7 @@ just deploy             # Full Cloud Run deploy: migrate DB, build, push, apply
 
 For a fresh checkout, `bin/db-test-setup --recreate` drops/creates the local `gomoku_test` database and runs all migrations against it.
 
----
+______________________________________________________________________
 
 ## 3. Deploy to Production
 
@@ -317,8 +352,8 @@ The application needs two containers and a PostgreSQL database. All three deploy
 [Neon](https://neon.tech) offers a generous free tier with serverless Postgres. Alternatives: [Supabase](https://supabase.com), [Aiven](https://aiven.io), Google Cloud SQL, AWS RDS.
 
 1. Create a Neon project in the **AWS US East (Ohio)** region (closest to Cloud Run `us-central1` — ~25ms RT).
-2. Toggle "Pooled connection" on and copy the DSN.
-3. Save it as `PRODUCTION_DATABASE_URL` in your `.env` (see below). `just deploy` will run all Alembic migrations against it.
+1. Toggle "Pooled connection" on and copy the DSN.
+1. Save it as `PRODUCTION_DATABASE_URL` in your `.env` (see below). `just deploy` will run all Alembic migrations against it.
 
 > No manual schema setup needed. Migrations live under `api/db/migrations/versions/` and apply automatically as the first step of every deploy.
 
@@ -349,16 +384,91 @@ cp .env.sample .env
 $EDITOR .env
 ```
 
-| Key | What goes there |
-|---|---|
-| `PRODUCTION_DATABASE_URL` | Pooled Neon DSN |
-| `PRODUCTION_JWT_SECRET` | Generate with `just jwt-secret` |
-| `HONEYCOMB_INGEST_API_KEY` | "Ingest" key from Honeycomb → API Keys |
-| `HONEYCOMB_CONFIG_API_KEY` | "Configuration" key — used to post deploy markers |
-| `PROJECT_ID` | Your GCP project ID |
-| `REGION` | Default `us-central1` |
+##### Secrets reference
 
-Names use the `PRODUCTION_` prefix so they don't collide with the runtime config Pydantic reads inside the FastAPI app.
+The `.env` file at the repo root holds **deploy-time** keys. `bin/deploy` reads them and maps them into `TF_VAR_*` environment variables before invoking Terraform; Terraform then writes them to the Cloud Run service env. The FastAPI app at runtime reads these names directly off `process.env` — Pydantic settings load them from there, not from `.env`.
+
+| `.env` key | Runtime env on Cloud Run | Required? | What it is |
+|---|---|---|---|
+| `PROJECT_ID` | — (used by deploy only) | required | GCP project ID |
+| `REGION` | — (used by deploy only) | optional (defaults `us-central1`) | GCP region |
+| `PRODUCTION_DATABASE_URL` / `STAGING_DATABASE_URL` | `DATABASE_URL` | required | Pooled Postgres DSN. Use Neon's pooled connection (`pgbouncer=true`) — Cloud Run scales horizontally and direct connections will exhaust idle slots fast. |
+| `PRODUCTION_JWT_SECRET` / `STAGING_JWT_SECRET` | `JWT_SECRET` | required | HS256 signing key. Generate with `just jwt-secret`. **Staging must differ from production** so a leaked staging token never grants prod access. |
+| `PRODUCTION_CUSTOM_DOMAIN` / `STAGING_CUSTOM_DOMAIN` (or legacy `CUSTOM_DOMAIN`) | `CUSTOM_DOMAIN` | required | The public hostname Cloud Run is mapped to. Drives multiplayer invite URLs. |
+| `HONEYCOMB_INGEST_API_KEY` (or per-env `PRODUCTION_HONEYCOMB_INGEST_API_KEY`) | `HONEYCOMB_API_KEY` | optional | OTLP ingest key. Empty disables tracing without breaking the deploy. |
+| `HONEYCOMB_CONFIG_API_KEY` | — (used by deploy only) | optional | Posts deploy markers. Skip if you don't care about a marker line in the trace UI. |
+| `HONEYCOMB_DATASET` | `HONEYCOMB_DATASET` | optional | Only needed for the legacy 32-char Honeycomb "classic" keys; ignored for env-aware keys. |
+| `EMAIL_PROVIDER` | `EMAIL_PROVIDER` | optional (defaults `stdout`) | `stdout` logs rendered bodies (good for dev/staging); `sendgrid` sends via the SendGrid Web API. |
+| `EMAIL_FROM` | `EMAIL_FROM` | required when `EMAIL_PROVIDER=sendgrid` | A SendGrid-verified sender. Set one up at https://app.sendgrid.com/settings/sender_auth/senders before flipping the provider — unverified senders bounce with a 403. |
+| `EMAIL_FROM_NAME` | `EMAIL_FROM_NAME` | optional | Display name on the From header. |
+| `SENDGRID_API_KEY` (or per-env `PRODUCTION_SENDGRID_API_KEY`) | `SENDGRID_API_KEY` | required when `EMAIL_PROVIDER=sendgrid` | API key with **Mail Send** permission. Generate at https://app.sendgrid.com/settings/api_keys. Restrict scope — full-access keys are unnecessary. |
+
+##### Storing secrets in Google Secret Manager (recommended for production)
+
+The default flow above passes secret values through Terraform variables, which means they end up in `tfstate` (stored in GCS — encrypted at rest, but visible to anyone with bucket read access). For production you should keep the values in Secret Manager and grant only the Cloud Run runtime service account access. **One-time setup, then deploys reference the secret name instead of the value:**
+
+```bash
+# 1. Enable Secret Manager (idempotent — safe to re-run).
+gcloud services enable secretmanager.googleapis.com --project="${PROJECT_ID}"
+
+# 2. Create each secret. `--data-file=-` reads from stdin so the value
+#    never lands in your shell history. Repeat per secret name below.
+printf '%s' "$(cat /path/to/jwt-secret.txt)"        | gcloud secrets create gomoku-jwt-secret      --data-file=- --replication-policy=automatic --project="${PROJECT_ID}"
+printf '%s' "postgresql://…/gomoku?sslmode=require" | gcloud secrets create gomoku-database-url    --data-file=- --replication-policy=automatic --project="${PROJECT_ID}"
+printf '%s' "SG.…"                                  | gcloud secrets create gomoku-sendgrid-key    --data-file=- --replication-policy=automatic --project="${PROJECT_ID}"
+printf '%s' "hcaik_…"                               | gcloud secrets create gomoku-honeycomb-key   --data-file=- --replication-policy=automatic --project="${PROJECT_ID}"
+
+# 3. Find the Cloud Run runtime service account. By default it's the
+#    project's Compute Engine default SA unless you've changed it on
+#    the gomoku-api service. The grep below picks the active value.
+RUN_SA=$(gcloud run services describe gomoku-api \
+   --region="${REGION}" --project="${PROJECT_ID}" \
+   --format='value(spec.template.spec.serviceAccountName)')
+# Fallback when the field is unset on the service:
+RUN_SA="${RUN_SA:-$(gcloud projects describe "${PROJECT_ID}" --format='value(projectNumber)')-compute@developer.gserviceaccount.com}"
+
+# 4. Grant secretAccessor on each secret to that SA.
+for s in gomoku-jwt-secret gomoku-database-url gomoku-sendgrid-key gomoku-honeycomb-key; do
+  gcloud secrets add-iam-policy-binding "$s" \
+    --member="serviceAccount:${RUN_SA}" \
+    --role=roles/secretAccessor \
+    --project="${PROJECT_ID}"
+done
+
+# 5. Rotate by adding a new version — the latest version is what the
+#    service reads on the next instance start.
+printf '%s' "new-jwt-value" | gcloud secrets versions add gomoku-jwt-secret --data-file=- --project="${PROJECT_ID}"
+```
+
+To switch the Cloud Run service from inline env values to Secret Manager references, change each `env { name = "X", value = var.x }` block in [`iac/cloud_run/main.tf`](iac/cloud_run/main.tf) to:
+
+```hcl
+env {
+  name = "JWT_SECRET"
+  value_source {
+    secret_key_ref {
+      secret  = "gomoku-jwt-secret"
+      version = "latest"
+    }
+  }
+}
+```
+
+…and drop the corresponding `TF_VAR_*` export from `bin/deploy` (the variable can stay defined in `variables.tf` for the `stdout`/dev path). The plain inline form is still committed because it's the lowest-friction onboarding for solo deploys; the Secret Manager form is the production recommendation.
+
+##### Verifying what's deployed
+
+```bash
+# Confirm the env block on the running service matches expectations.
+gcloud run services describe gomoku-api \
+  --region="${REGION}" --project="${PROJECT_ID}" \
+  --format='value(spec.template.spec.containers[0].env)' | tr ';' '\n'
+
+# List all secrets in the project.
+gcloud secrets list --project="${PROJECT_ID}"
+```
+
+Names use the `PRODUCTION_` / `STAGING_` prefix in `.env` so they don't collide with the runtime config Pydantic reads inside the FastAPI app — Cloud Run's runtime env uses the unprefixed names (`DATABASE_URL`, `JWT_SECRET`, …); the prefix-stripping happens in `bin/deploy`.
 
 #### Deploy
 
@@ -369,17 +479,17 @@ just deploy
 That single command, via `bin/deploy`, runs in order:
 
 1. Verifies GCP application-default credentials (prompts login only if missing)
-2. Runs Alembic migrations against `PRODUCTION_DATABASE_URL`
-3. Builds the frontend → `api/public`
-4. Builds + pushes both Docker images for `linux/amd64` to Artifact Registry
-5. Applies Terraform (Cloud Run services, IAM, env vars)
-6. Posts a deploy marker to Honeycomb
+1. Runs Alembic migrations against `PRODUCTION_DATABASE_URL`
+1. Builds the frontend → `api/public`
+1. Builds + pushes both Docker images for `linux/amd64` to Artifact Registry
+1. Applies Terraform (Cloud Run services, IAM, env vars)
+1. Posts a deploy marker to Honeycomb
 
 It's idempotent — safe to run on every deploy, picks up infra changes automatically.
 
 #### DNS
 
-Point your domain to the frontend service URL from the Terraform output. Cloud Run provisions and renews TLS automatically. See [doc/deployment.md](doc/deployment.md#custom-domain) for the gcloud commands.
+Point your domain to the frontend service URL from the Terraform output. Cloud Run provisions and renews TLS automatically. See [reference/deployment-architecture.md](reference/deployment-architecture.md#custom-domain) for the gcloud commands.
 
 See [iac/README.md](iac/README.md) for the full infrastructure reference and Terraform variables.
 
@@ -427,22 +537,43 @@ docker compose up -d
 
 Minimum setup: two containers (`gomoku-api:latest` on port 8000, `gomoku-httpd:latest` on port 8787), a reverse proxy (nginx/Caddy) for TLS. Set environment variables as shown in the [Configuration](#configuration) section.
 
-## Configuration
+## CONFIGURATION
 
-The FastAPI app loads `api/.env.{development,test,ci}[.local]` based on the `ENVIRONMENT` env var (default `development`). Committed defaults live in `api/.env.development` and `api/.env.test`; `.local` overlays are gitignored for personal overrides (e.g., pointing local dev at Neon).
+The FastAPI app loads `api/.env.{development,test,ci}[.local]` based on the `ENVIRONMENT` env var (default `development`). Committed defaults live in `api/.env.development` and `api/.env.test`; `.local` overlays are gitignored for personal overrides. In production, all values come from Cloud Run env vars set by Terraform (no `.env` file is read).
+
+The tables below split variables by whether the app can boot/run without them. See [Application Configuration](#application-configuration) below for the full reference (telemetry, database details, etc.).
+
+### Required (the app will not function correctly without these)
+
+| Variable | Required In | Purpose |
+|---|---|---|
+| `ENVIRONMENT` | always | `development`, `test`, `ci`, or `production` — selects which `.env.{stage}` file Pydantic loads. Defaults to `development`. |
+| `DATABASE_URL` | production, any non-default DB | Full PostgreSQL DSN, e.g. `postgresql://user:pass@host/gomoku`. Without this, the app falls back to `postgresql://postgres@localhost/gomoku` which only works for local development. |
+| `JWT_SECRET` | production | HMAC signing key for auth tokens. The committed default `change-me-in-production` MUST be overridden in any deployed environment. Generate with `just jwt-secret` or `openssl rand -base64 32`. |
+| `GOMOKU_HTTPD_URL` | production | URL of the upstream C game engine daemon. Defaults to `http://localhost:10000` (envoy frontend) for local clusters. |
+| `PUBLIC_DOMAIN` | production | Domain used to build outbound URLs (e.g. password-reset links in emails). Defaults to `app.gomoku.games`. |
+
+### Required when email is enabled (`EMAIL_PROVIDER=sendgrid`)
+
+| Variable | Purpose |
+|---|---|
+| `EMAIL_PROVIDER` | Set to `sendgrid` in production. Default `stdout` writes reset links to the console (development only). |
+| `SENDGRID_API_KEY` | SendGrid Web API v3 bearer token. Create at <https://app.sendgrid.com/settings/api_keys>. The app raises `RuntimeError` at send time if `EMAIL_PROVIDER=sendgrid` and this is unset. |
+| `EMAIL_FROM` | Sender address. Must belong to a SendGrid-authenticated domain (DKIM/SPF). Default `gomoku@email.gomoku.games`. |
+| `EMAIL_FROM_NAME` | Friendly display name on the `From:` header. Default `Gomoku Support`. |
+
+> **Note on SendGrid auth.** SendGrid's v3 API authenticates with a single API *key* (Bearer token). There is no separate API *ID* — the key alone identifies your account. Store `SENDGRID_API_KEY` in Cloud Run as a Secret Manager-backed env var, never in a committed `.env` file.
+
+### Optional (have safe defaults)
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `ENVIRONMENT` | `development` | `development`, `test`, `ci`, or `production` — selects which `.env.{stage}` file Pydantic loads |
-| `DATABASE_URL` | from `.env.{stage}` | PostgreSQL DSN |
-| `GOMOKU_HTTPD_URL` | `http://localhost:10000` | Upstream game engine (envoy frontend) |
-| `JWT_SECRET` | from `.env.{stage}` | HMAC signing key |
-| `CORS_ORIGINS` | `["*"]` | Allowed origins (JSON array) |
-| `EMAIL_PROVIDER` | `stdout` | `stdout` or `sendgrid` |
-| `HONEYCOMB_API_KEY` | *(none)* | Honeycomb ingest key — enables OTel tracing when set |
-| `OTEL_SERVICE_NAME` | `gomoku-api` | Service name in Honeycomb traces |
-
-In production, all of these come from Cloud Run env vars set by Terraform (no `.env` file is read). See the [Application Configuration](#application-configuration) section below for the full reference.
+| `JWT_ALGORITHM` | `HS256` | JWT signing algorithm. |
+| `JWT_EXPIRE_MINUTES` | `10080` (1 week) | Token lifetime. |
+| `CORS_ORIGINS` | `["*"]` | JSON array of allowed origins. Tighten in production. |
+| `HONEYCOMB_API_KEY` | *(none)* | Honeycomb ingest key — enables OTel tracing when set. No-op when unset. |
+| `OTEL_SERVICE_NAME` | `gomoku-api` | Service name attached to every span. |
+| `CUSTOM_DOMAIN` | *(none)* | Override `PUBLIC_DOMAIN` (e.g. local dev hosts pointed at `dev.gomoku.games` via `/etc/hosts`). |
 
 ## Project Structure
 
@@ -450,16 +581,21 @@ In production, all of these come from Cloud Run env vars set by Terraform (no `.
 gomoku-c/               C game engine + HTTP daemon
   src/gomoku/             AI, board, game, UI, CLI
   src/net/                Stateless HTTP daemon (JSON API)
+  src/gomocup/            Gomocup-protocol brain (pbrain-kig-standard)
   tests/                  Google Test suite + AI evals
+gomoku-httpd-rust/      Rust port of the HTTP daemon (multi-threaded)
 api/                    FastAPI service
-  app/                    Auth, scoring, leaderboard, game proxy, telemetry
+  app/                    Auth, scoring, leaderboard, multiplayer, chat,
+                          presence, game proxy, telemetry
   db/migrations/          Alembic migrations
   public/                 Frontend assets (built by justfile)
-  tests/                  89 integration tests (parallel via pytest-xdist)
-frontend/               React + TypeScript + Tailwind
+  tests/                  Integration tests (parallel via pytest-xdist)
+frontend/               React + TypeScript + Tailwind + Vite SPA
 iac/                    Infrastructure (Cloud Run, Cloud SQL, nginx, envoy)
 bin/                    gctl cluster manager, helper scripts
-doc/                    Technical documentation
+.features/              Per-feature dirs: spec.md + plan.md (NNN.<slug>[.done])
+reference/              Long-form reference docs (engine, protocols, audits)
+just/                   Per-area justfiles included by the root justfile
 justfile                Monorepo orchestration
 ```
 
@@ -467,21 +603,21 @@ justfile                Monorepo orchestration
 
 | Document | Description |
 |---|---|
-| [doc/01-human-vs-ai-tui.md](doc/01-human-vs-ai-tui.md) | **Mode 1** — TUI binary, CLI flags, depth/radius, recording |
-| [doc/02-human-vs-ai-web.md](doc/02-human-vs-ai-web.md) | **Mode 2** — web flow, settings panel, scoring, API |
-| [doc/03-human-vs-human-web.md](doc/03-human-vs-human-web.md) | **Mode 3** — invite links, polling cadence, lifecycle |
-| [doc/04-gomocup-submission.md](doc/04-gomocup-submission.md) | **Mode 4** — `pbrain-kig-standard` build, packaging, submission |
-| [doc/gomocup-elo-rankings.md](doc/gomocup-elo-rankings.md) | Unified Elo system (BayesElo, recalibration) |
-| [doc/deployment.md](doc/deployment.md) | Local cluster, Cloud Run, and GKE deployment |
-| [doc/developer.md](doc/developer.md) | C engine technical overview and architecture |
-| [doc/ai-engine.md](doc/ai-engine.md) | AI algorithm analysis, threat scoring, known issues |
-| [doc/httpd.md](doc/httpd.md) | HTTP daemon API reference and cluster setup |
-| [doc/game-rules.md](doc/game-rules.md) | Gomoku/Renju rules and variant support proposal |
-| [doc/dtrace.md](doc/dtrace.md) | DTrace investigation of CPU busy-spin fix |
-| [doc/gomocup-protocol.md](doc/gomocup-protocol.md) | Gomocup brain protocol implementation plan |
-| [doc/human-vs-human-plan.md](doc/human-vs-human-plan.md) | Multiplayer feature plan + multi-agent build workflow |
-| [doc/multiplayer-modal-plan.md](doc/multiplayer-modal-plan.md) | "Choose Game Type" modal + invite-link spec |
-| [doc/multiplayer-bugs.md](doc/multiplayer-bugs.md) | Bug list & fixes from the original multiplayer PR |
+| [.features/004.terminal-ai-game-binary.done/spec.md](.features/004.terminal-ai-game-binary.done/spec.md) | **Mode 1** — TUI binary, CLI flags, depth/radius, recording |
+| [.features/005.web-spa-ai-game-flow.done/spec.md](.features/005.web-spa-ai-game-flow.done/spec.md) | **Mode 2** — web flow, settings panel, scoring, API |
+| [.features/006.web-multiplayer-invite-flow.done/spec.md](.features/006.web-multiplayer-invite-flow.done/spec.md) | **Mode 3** — invite links, polling cadence, lifecycle |
+| [.features/007.pbrain-gomocup-tournament-submission.done/spec.md](.features/007.pbrain-gomocup-tournament-submission.done/spec.md) | **Mode 4** — `pbrain-kig-standard` build, packaging, submission |
+| [reference/gomocup-bayesian-elo-system.md](reference/gomocup-bayesian-elo-system.md) | Unified Elo system (BayesElo, recalibration) |
+| [reference/deployment-architecture.md](reference/deployment-architecture.md) | Local cluster, Cloud Run, and GKE deployment |
+| [reference/c-engine-developer-overview.md](reference/c-engine-developer-overview.md) | C engine technical overview and architecture |
+| [reference/c-engine-ai-algorithm-deep-dive.md](reference/c-engine-ai-algorithm-deep-dive.md) | AI algorithm analysis, threat scoring, known issues |
+| [reference/httpd-rest-api-reference.md](reference/httpd-rest-api-reference.md) | HTTP daemon API reference and cluster setup |
+| [reference/gomoku-and-renju-rules.md](reference/gomoku-and-renju-rules.md) | Gomoku/Renju rules and variant support proposal |
+| [reference/httpd-cpu-busy-spin-investigation.md](reference/httpd-cpu-busy-spin-investigation.md) | DTrace investigation of CPU busy-spin fix |
+| [reference/gomocup-protocol-v2-implementation.md](reference/gomocup-protocol-v2-implementation.md) | Gomocup brain protocol implementation plan |
+| [.features/003.multiplayer-architecture-and-data-model.done/plan.md](.features/003.multiplayer-architecture-and-data-model.done/plan.md) | Multiplayer feature plan + multi-agent build workflow |
+| [.features/009.choose-game-type-modal-and-invite-link.done/plan.md](.features/009.choose-game-type-modal-and-invite-link.done/plan.md) | "Choose Game Type" modal + invite-link spec |
+| [.features/008.multiplayer-pr-hardening-checklist.done/plan.md](.features/008.multiplayer-pr-hardening-checklist.done/plan.md) | Bug list & fixes from the original multiplayer PR |
 | [iac/README.md](iac/README.md) | Cloud Run infrastructure and Terraform |
 | [frontend/CLAUDE.md](frontend/CLAUDE.md) | Frontend architecture and API endpoints |
 
@@ -497,10 +633,10 @@ logging in, the **Choose Game Type** modal appears with two options:
   color up front or defer the choice to the guest, who will pick at join
   time.
 
-The full spec is in [doc/multiplayer-modal-plan.md](doc/multiplayer-modal-plan.md);
+The full spec is in [.features/009.choose-game-type-modal-and-invite-link.done/plan.md](.features/009.choose-game-type-modal-and-invite-link.done/plan.md);
 the underlying API (six `/multiplayer/*` endpoints, asyncpg + raw-SQL,
 short-poll with backoff) is documented in
-[doc/human-vs-human-plan.md](doc/human-vs-human-plan.md).
+[.features/003.multiplayer-architecture-and-data-model.done/plan.md](.features/003.multiplayer-architecture-and-data-model.done/plan.md).
 
 ## Application Configuration
 
@@ -540,9 +676,10 @@ The FastAPI server (`api/`) is configured via environment variables. Locally, de
 
 | Variable | Default | Description |
 |---|---|---|
-| `EMAIL_PROVIDER` | `stdout` | `stdout` or `sendgrid`. |
-| `EMAIL_FROM` | `noreply@gomoku.games` | Sender address. |
-| `SENDGRID_API_KEY` | *(none)* | Required when `EMAIL_PROVIDER=sendgrid`. |
+| `EMAIL_PROVIDER` | `stdout` | `stdout` (logs the reset link — dev only) or `sendgrid` (posts to SendGrid v3). |
+| `EMAIL_FROM` | `gomoku@email.gomoku.games` | Sender address. Must belong to a SendGrid-authenticated domain (DKIM/SPF). |
+| `EMAIL_FROM_NAME` | `Gomoku Support` | Friendly display name shown alongside `EMAIL_FROM` in the `From:` and `Reply-To:` headers. |
+| `SENDGRID_API_KEY` | *(none)* | SendGrid Web API v3 bearer token. Required when `EMAIL_PROVIDER=sendgrid` — the service raises `RuntimeError` at send time if missing. |
 
 ### Telemetry
 

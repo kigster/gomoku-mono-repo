@@ -21,7 +21,7 @@ Concretely:
   more rating than a win against depth-3.
 
 References:
-- ``doc/gomocup-elo-rankings.md`` for the full design rationale.
+- ``reference/gomocup-bayesian-elo-system.md`` for the full design rationale.
 - Coulom, R. *Bayesian Elo Rating* — https://www.remi-coulom.fr/Bayesian-Elo/
 - Gomocup ratings page — https://gomocup.org/elo-ratings/
 """
@@ -30,7 +30,7 @@ INITIAL_RATING = 1500
 
 
 # Rough strength estimates for each (depth, radius) AI tier. Derived from
-# doc/gomocup-elo-rankings.md §4 with extra interpolation for the radius
+# reference/gomocup-bayesian-elo-system.md §4 with extra interpolation for the radius
 # variants the web flow exposes (the doc's six-tier table only covers
 # specific (depth, radius) pairs). Will be empirically corrected once
 # enough humans play each tier.

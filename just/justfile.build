@@ -1,0 +1,71 @@
+# vim: ft=just
+#
+# Build & install recipes.
+#
+# `build-*` compiles a component in place (artifacts stay in its own tree).
+# `install-*` depends on the matching build step and then copies the
+# resulting artifact(s) into the repo-root `./bin/` (or, for the frontend,
+# into `api/public/`). The top-level `just build` calls `build-all`; the
+# top-level `just install` calls `install-all`.
+
+# ─── Build (compile, no install) ───────────────────────────────────────────────
+
+# Build the C engine + httpd daemon + http test client (artifacts in gomoku-c/bin)
+build-gomoku-c:
+    @make -C gomoku-c all
+
+# Build the Rust httpd daemon in release mode (artifact in gomoku-httpd-rust/target/release)
+build-rust:
+    cd gomoku-httpd-rust && just build-release
+
+# Install JS deps + run `npm run build` (artifacts in frontend/dist)
+build-frontend:
+    cd frontend && npm install --silent && npm run build
+
+# Build every component without copying anything to ./bin
+build-all: build-gomoku-c build-rust build-frontend
+
+# ─── Install (build + copy artifacts) ──────────────────────────────────────────
+
+# Copy gomoku-c artifacts into ./bin (delegates to `make -C gomoku-c install`)
+install-gomoku-c: build-gomoku-c
+    @make -C gomoku-c install
+
+# Copy the Rust httpd binary into ./bin
+install-rust: build-rust
+    @mkdir -p bin
+    cp -fv gomoku-httpd-rust/target/release/gomoku-httpd-rust bin/gomoku-httpd-rust
+
+# Copy frontend dist into api/public (preserving .gitkeep)
+install-frontend: build-frontend
+    rm -rf api/public
+    cp -r frontend/dist api/public
+    touch api/public/.gitkeep
+
+# Install every component (build + copy artifacts).
+install-all: install-gomoku-c install-rust install-frontend
+
+# ─── Clean ─────────────────────────────────────────────────────────────────────
+
+# Clean compiled C artifacts
+clean-gomoku-c:
+    @make -C gomoku-c clean
+
+# Clean Rust target/ (full distclean)
+clean-rust:
+    @cd gomoku-httpd-rust && just distclean
+
+# Clean frontend dist + node_modules
+clean-frontend:
+    @rm -rf frontend/dist frontend/node_modules
+
+# Remove every binary previously installed into ./bin
+clean-bin:
+    @{{ find }} bin/ -maxdepth 1 -type f \( -name 'gomoku*' -o -name 'pbrain-*' \) -delete -print || true
+
+# Clean everything: per-component artifacts + installed binaries + stray *.o files
+clean-all: clean-gomoku-c clean-rust clean-frontend clean-bin
+    @{{ find }} . -type f -name '*.o' -delete -print || true
+
+# Convenience: full rebuild from scratch
+rebuild: clean-all install-all

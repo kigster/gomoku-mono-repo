@@ -13,19 +13,19 @@ SERVICES="${*:-httpd api}"
 gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
 
 if [[ "$SERVICES" == *"httpd"* ]]; then
-    IMAGE="$REGISTRY/gomoku-httpd:latest"
-    echo "Building and pushing gomoku-httpd..."
-    docker buildx build --platform linux/amd64 -t "$IMAGE" --load "$REPO_ROOT/gomoku-c/"
-    docker push "$IMAGE"
-    gcloud run services update gomoku-httpd --region="$REGION" --image="$IMAGE"
+  IMAGE="$REGISTRY/gomoku-httpd:latest"
+  echo "Building and pushing gomoku-httpd..."
+  docker buildx build --platform linux/amd64 -t "$IMAGE" --load "$REPO_ROOT/gomoku-c/"
+  docker push "$IMAGE"
+  gcloud run services update gomoku-httpd --region="$REGION" --image="$IMAGE"
 fi
 
 if [[ "$SERVICES" == *"api"* ]]; then
-    IMAGE="$REGISTRY/gomoku-api:latest"
-    echo "Building and pushing gomoku-api..."
-    docker buildx build --platform linux/amd64 -t "$IMAGE" --load "$REPO_ROOT/api/"
-    docker push "$IMAGE"
-    gcloud run services update gomoku-api --region="$REGION" --image="$IMAGE"
+  IMAGE="$REGISTRY/gomoku-api:latest"
+  echo "Building and pushing gomoku-api..."
+  docker buildx build --platform linux/amd64 -t "$IMAGE" --load "$REPO_ROOT/api/"
+  docker push "$IMAGE"
+  gcloud run services update gomoku-api --region="$REGION" --image="$IMAGE"
 fi
 
 echo "Update complete."

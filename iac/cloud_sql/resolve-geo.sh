@@ -33,15 +33,15 @@ while IFS='|' read -r id ip; do
 
   if [ "$STATUS" = "success" ]; then
     COUNTRY=$(echo "$GEO" | python3 -c "import sys,json; print(json.load(sys.stdin)['country'])")
-    REGION=$(echo "$GEO"  | python3 -c "import sys,json; print(json.load(sys.stdin)['regionName'])")
-    CITY=$(echo "$GEO"    | python3 -c "import sys,json; print(json.load(sys.stdin)['city'])")
-    LAT=$(echo "$GEO"     | python3 -c "import sys,json; print(json.load(sys.stdin)['lat'])")
-    LON=$(echo "$GEO"     | python3 -c "import sys,json; print(json.load(sys.stdin)['lon'])")
+    REGION=$(echo "$GEO" | python3 -c "import sys,json; print(json.load(sys.stdin)['regionName'])")
+    CITY=$(echo "$GEO" | python3 -c "import sys,json; print(json.load(sys.stdin)['city'])")
+    LAT=$(echo "$GEO" | python3 -c "import sys,json; print(json.load(sys.stdin)['lat'])")
+    LON=$(echo "$GEO" | python3 -c "import sys,json; print(json.load(sys.stdin)['lon'])")
 
     $PSQL -c "UPDATE games SET
       geo_country = '$(echo "$COUNTRY" | sed "s/'/''/g")',
-      geo_region  = '$(echo "$REGION"  | sed "s/'/''/g")',
-      geo_city    = '$(echo "$CITY"    | sed "s/'/''/g")',
+      geo_region  = '$(echo "$REGION" | sed "s/'/''/g")',
+      geo_city    = '$(echo "$CITY" | sed "s/'/''/g")',
       geo_loc     = point($LON, $LAT)
       WHERE id = $id" >/dev/null
 
@@ -50,7 +50,7 @@ while IFS='|' read -r id ip; do
     echo "  [$id] $ip → lookup failed"
   fi
 
-  sleep 1.5  # Stay under 45 req/min rate limit
-done <<< "$IPS"
+  sleep 1.5 # Stay under 45 req/min rate limit
+done <<<"$IPS"
 
 echo "Done."

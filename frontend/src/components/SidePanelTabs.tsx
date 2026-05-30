@@ -12,6 +12,11 @@ interface SidePanelTabsProps {
   /** Always-rendered Multi content (the ChatPanel) — same retention
    *  rationale. */
   multi: ReactNode
+  /** 'card' (default) — natural height, used in the home-page right rail.
+   *  'fill' — stretches to the parent's full height with the active tab
+   *  panel growing to fill remaining space. Used in the in-game layout so
+   *  the chat panel can match the board's height. */
+  height?: 'card' | 'fill'
 }
 
 /**
@@ -29,9 +34,11 @@ export default function SidePanelTabs ({
   onChange,
   solo,
   multi,
+  height = 'card',
 }: SidePanelTabsProps) {
+  const fill = height === 'fill'
   return (
-    <div className='flex flex-col'>
+    <div className={fill ? 'flex flex-col h-full min-h-0' : 'flex flex-col'}>
       <div
         role='tablist'
         aria-label='Right-rail panel'
@@ -48,11 +55,19 @@ export default function SidePanelTabs ({
           onClick={() => onChange('multi')}
         />
       </div>
-      <div className='pt-4'>
-        <div role='tabpanel' hidden={active !== 'solo'}>
+      <div className={fill ? 'pt-4 flex-1 min-h-0 flex flex-col' : 'pt-4'}>
+        <div
+          role='tabpanel'
+          hidden={active !== 'solo'}
+          className={fill && active === 'solo' ? 'flex-1 min-h-0' : ''}
+        >
           {solo}
         </div>
-        <div role='tabpanel' hidden={active !== 'multi'}>
+        <div
+          role='tabpanel'
+          hidden={active !== 'multi'}
+          className={fill && active === 'multi' ? 'flex-1 min-h-0' : ''}
+        >
           {multi}
         </div>
       </div>

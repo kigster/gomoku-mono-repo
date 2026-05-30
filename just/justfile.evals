@@ -1,0 +1,47 @@
+# vim: ft=just
+#
+# AI evaluation harnesses: tactical positions, depth tournaments, LLM-based
+# game judging, and a Ruby tournament that runs against the local
+# gomoku-httpd cluster through envoy.
+#
+# All recipes assume the C engine binaries exist; they depend on `build-all`
+# (which builds gomoku-c artifacts into gomoku-c/bin) rather than `install-all`
+# because the evals scripts call into gomoku-c/bin directly.
+
+# Run tactical position tests (forced wins, defensive saves, …)
+eval-tactical: build-gomoku-c
+    #!/usr/bin/env bash
+    set -uo pipefail
+    echo "=== Running Tactical Tests ==="
+    chmod +x gomoku-c/tests/evals/bash/run-tactical-tests
+    gomoku-c/tests/evals/bash/run-tactical-tests || true
+
+# Run a depth tournament (AI vs AI at depths 2..4, ten games each)
+eval-tournament: build-gomoku-c
+    @echo "=== Running Depth Tournament ==="
+    chmod +x gomoku-c/tests/evals/bash/depth-tournament
+    gomoku-c/tests/evals/bash/depth-tournament --games 10 --depths "2,3,4"
+
+# LLM-based game evaluation (requires ANTHROPIC_API_KEY)
+eval-llm: build-gomoku-c
+    @echo "=== Running LLM Evaluation ==="
+    uv run gomoku-c/tests/evals/python/llm_eval.py
+
+# Bash depth tournament with a wider grid (custom params)
+eval-bash:
+    gomoku-c/tests/evals/bash/depth-tournament -d 1,2,3,4,5 -r 3,4 --games 10
+
+# Ruby tournament against the gomoku-httpd cluster behind envoy
+eval-ruby:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "Starting gomoku-httpd cluster behind envoy..."
+    (gctl ps | grep -q -E 'gomoku-httpd' && gctl ps | grep -q -E 'envoy') && \
+        echo "Cluster is already up :)" || gctl start -p envoy
+    cd gomoku-c/tests/evals/ruby
+    bundle check || bundle install -j 12
+    ln -nfs ../../bin/gomoku-http-client .
+    bundle exec depth-tournament tournament -d 1,2,3,4 -r 2,3 --games 5 --verbose
+
+# Run tactical + depth tournament (excludes eval-llm + eval-ruby)
+evals-all: eval-tactical eval-tournament

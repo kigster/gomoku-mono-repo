@@ -31,16 +31,14 @@
     "@types/react-dom": "^18.3.1",
     "@types/react-syntax-highlighter": "15.5.13",
     "@vitejs/plugin-react": "^4.3.4",
-    "ajv": "8.18.0",
-    "ajv-cli": "5.0.0",
-    "autoprefixer": "^10.4.20",
-    "cypress": "15.14.2",
-    "jsdom": "29.0.1",
-    "pg": "8.20.0",
-    "postcss": "^8.5.10",
+    "autoprefixer": "^10.5.0",
+    "cypress": "15.16.0",
+    "jsdom": "29.1.1",
+    "pg": "8.21.0",
+    "postcss": "^8.5.15",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.6.3",
     "vite": "^6.4.2",
-    "vitest": "4.1.2"
+    "vitest": "4.1.7"
   }
 }

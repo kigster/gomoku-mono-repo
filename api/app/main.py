@@ -13,6 +13,7 @@ from app.config import settings
 from app.database import close_pool, create_pool
 from app.logger import get_logger
 from app.middleware.client_ip import ClientIPMiddleware
+from app.middleware.http_response_exception import HTTPResponseExceptionMiddleware
 from app.middleware.request_logging import RequestLoggingMiddleware
 from app.routers import auth, chat, game, leaderboard, multiplayer, social, user
 from app.telemetry import instrument_app, setup_telemetry
@@ -47,6 +48,7 @@ logger = get_logger("gomoku.app")
 
 fastapi_app = FastAPI(title="Gomoku API", version="0.1.0", lifespan=lifespan)
 
+fastapi_app.add_middleware(HTTPResponseExceptionMiddleware)
 fastapi_app.add_middleware(RequestLoggingMiddleware)
 fastapi_app.add_middleware(
     CORSMiddleware,
@@ -84,6 +86,7 @@ fastapi_app.include_router(leaderboard.router)
 fastapi_app.include_router(multiplayer.router)
 fastapi_app.include_router(social.router)
 fastapi_app.include_router(user.router)
+fastapi_app.include_router(user.seen_router)
 
 instrument_app(fastapi_app)
 

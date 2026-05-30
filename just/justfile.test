@@ -1,0 +1,40 @@
+# vim: ft=just
+#
+# Per-component test recipes plus the `test-all` joiner.
+#
+# All recipes run unit / fast tests only. End-to-end tests live in
+# `justfile.e2e`. Integration smoke tests for the Rust daemon live in
+# `test-rust-integration` and run as part of `just ci` (not `just test`).
+
+# Run the C engine + gomoku-httpd unit + protocol e2e suite (Make target)
+test-gomoku-c:
+    ENVIRONMENT=test make -C gomoku-c test
+
+# Run the gomoku-httpd daemon unit tests only
+test-daemon:
+    ENVIRONMENT=test make -C gomoku-c test-daemon
+
+# Run the Rust httpd test suite (unit + doc tests)
+test-rust:
+    ENVIRONMENT=test cd gomoku-httpd-rust && just test
+
+# Run the Rust integration smoke test (spawns the daemon + two clients)
+test-rust-integration:
+    ENVIRONMENT=test cd gomoku-httpd-rust && just integration
+
+# Run API tests in parallel across 5 xdist workers (own DB per worker)
+test-api:
+    cd api && just install && ENVIRONMENT=test just test -n 5
+
+# Run the vitest frontend suite
+test-frontend:
+    ENVIRONMENT=test cd frontend && npm install
+    ENVIRONMENT=test cd frontend && npm test
+
+# JSON schema validator for any games stored under gomoku-c/games
+test-validate-games:
+    @cd schema-validator && bundle check || bundle install >/dev/null
+    @cd schema-validator && bundle exec bin/schema-validator validate-json ../gomoku-c/games
+
+# Run every component's unit tests (excludes cypress + Rust integration)
+test-all: test-gomoku-c test-rust test-api test-frontend test-validate-games

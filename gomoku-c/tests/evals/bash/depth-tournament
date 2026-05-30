@@ -31,7 +31,6 @@ export BOARD_SIZE=15
 export WINS_DUE_HIGHER_DEPTH=0
 export WINS_DUE_LOWER_DEPTH=0
 
-
 function key() {
   echo -n "d${1}_r${2}" | tr -d '\n'
 }
@@ -77,34 +76,34 @@ function parse.args() {
   # Parse arguments
   while [[ $# -gt 0 ]]; do
     case $1 in
-      -g | --games)
-        export GAMES_PER_MATCHUP="$2"
-        shift 2
-        ;;
-      -d | --depths)
-        export DEPTHS="$2"
-        shift 2
-        ;;
-      -r | --radiuses)
-        export RADIUSES="$2"
-        shift 2
-        ;;
-      -b | --board)
-        export BOARD_SIZE="$2"
-        shift 2
-        ;;
-      -t | --timeout)
-        export GAME_TIMEOUT="$2"
-        shift 2
-        ;;
-      -h | --help)
-        usage
-        exit 0
-        ;;
-      *)
-        echo "Unknown option: $1"
-        exit 1
-        ;;
+    -g | --games)
+      export GAMES_PER_MATCHUP="$2"
+      shift 2
+      ;;
+    -d | --depths)
+      export DEPTHS="$2"
+      shift 2
+      ;;
+    -r | --radiuses)
+      export RADIUSES="$2"
+      shift 2
+      ;;
+    -b | --board)
+      export BOARD_SIZE="$2"
+      shift 2
+      ;;
+    -t | --timeout)
+      export GAME_TIMEOUT="$2"
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown option: $1"
+      exit 1
+      ;;
     esac
   done
 }
@@ -120,8 +119,8 @@ function init() {
   mkdir -p "$OUTPUT_DIR"
 
   # Parse depths and radiuses into arrays
-  IFS=',' read -ra DEPTH_ARRAY <<< "$DEPTHS"
-  IFS=',' read -ra RADIUS_ARRAY <<< "$RADIUSES"
+  IFS=',' read -ra DEPTH_ARRAY <<<"$DEPTHS"
+  IFS=',' read -ra RADIUS_ARRAY <<<"$RADIUSES"
 
   h2bg "START: Gomoku AI Depth & Radius Tournament"
 
@@ -147,7 +146,6 @@ function init() {
   export matches_played=0
 }
 
-
 function reset_stats() {
   for d in "${DEPTH_ARRAY[@]}"; do
     for r in "${RADIUS_ARRAY[@]}"; do
@@ -159,8 +157,7 @@ function reset_stats() {
   done
 }
 
-
-function print_results() { 
+function print_results() {
   local RADIUS="$1"
   # Print summary (all depth x radius combinations)
 
@@ -177,15 +174,16 @@ function print_results() {
       win_pct="0"
     fi
     result_string="$(printf "%8d | %8d | %8d | %8d | %8d | %6.2f" "${d}" "${r}" "${WINS["$key"]}" "${LOSSES["$key"]}" "${DRAWS["$key"]}" "$win_pct")"
-    RESULTS+=( "$result_string" )
+    RESULTS+=("$result_string")
   done
-  echo;echo; echo 
+  echo
+  echo
+  echo
 
   h3bg "TOURNAMENT RESULTS for Radius ${RADIUS}" \
     "$(printf "%8s | %8s | %8s | %8s | %8s | %7s" "Depth" "Radius" "Wins" "Losses" "Draws" "Win %%")" \
     "${RESULTS[@]}"
 }
-
 
 function print_summary() {
   local RADIUS="$1"
@@ -195,30 +193,30 @@ function print_summary() {
     return 0
   else
     percentage=$(echo "scale=1; (100.0 - ${WINS_DUE_LOWER_DEPTH} * 100 / (${WINS_DUE_HIGHER_DEPTH} + ${WINS_DUE_LOWER_DEPTH})" | bc)
-    error   "WIN BIAS @ Radius $RADIUS: Higher depths have FEWER wins than lower depths:" "${WINS_DUE_HIGHER_DEPTH} wins vs ${WINS_DUE_LOWER_DEPTH} losses, a loss ratio of $(printf "%5.2f%% Wins" "${percentage}")"
+    error "WIN BIAS @ Radius $RADIUS: Higher depths have FEWER wins than lower depths:" "${WINS_DUE_HIGHER_DEPTH} wins vs ${WINS_DUE_LOWER_DEPTH} losses, a loss ratio of $(printf "%5.2f%% Wins" "${percentage}")"
     return 1
   fi
 }
 
-
 function compute.radius() {
-  local RADIUS="$1"\
-  
+  local RADIUS="$1"
+
   reset_stats
 
-  for ((i=0; i<${#DEPTH_ARRAY[@]}; i++)); do
-    for ((j=0; j<${#DEPTH_ARRAY[@]}; j++)); do
+  for ((i = 0; i < ${#DEPTH_ARRAY[@]}; i++)); do
+    for ((j = 0; j < ${#DEPTH_ARRAY[@]}; j++)); do
       [[ $i -eq $j ]] && continue
       DEPTH_X="${DEPTH_ARRAY[$i]}"
       DEPTH_O="${DEPTH_ARRAY[$j]}"
-      echo; echo
+      echo
+      echo
       hdr2 "R: ${RADIUS}       |  X(d${DEPTH_X})      |  O(d${DEPTH_O})      | Matches Played → $(printf "%2d" "${matches_played}")         "
 
       export x_wins=0
       export o_wins=0
       export draws=0
 
-      for ((g=1; g<=GAMES_PER_MATCHUP; g++)); do
+      for ((g = 1; g <= GAMES_PER_MATCHUP; g++)); do
         GAME_FILE="$OUTPUT_DIR/game-r${RADIUS}-d${DEPTH_X}-d${DEPTH_O}-b${BOARD_SIZE}-${g}.json"
 
         # Run game silently with move timeout (seconds)
@@ -234,21 +232,21 @@ function compute.radius() {
         if [[ -f "$GAME_FILE" ]]; then
           winner=$(grep -o '"winner":"[^"]*"' "$GAME_FILE" | cut -d'"' -f4)
           case "$winner" in
-            X)
-              ((++x_wins))
-              ;;
-            O)
-              ((++o_wins))
-              ;;
-            draw)
-              ((++draws))
-              ;;
+          X)
+            ((++x_wins))
+            ;;
+          O)
+            ((++o_wins))
+            ;;
+          draw)
+            ((++draws))
+            ;;
           esac
-          rm -f "$GAME_FILE"  # Clean up
+          rm -f "$GAME_FILE" # Clean up
         fi
 
         # Progress indicator
-        hdr "$(printf "Game %2d/%2d |  X(d%d) → %2d |  O(d%d) → %2d | Draw → %2d         " "$g" "$GAMES_PER_MATCHUP" "$DEPTH_X" "$x_wins" "$DEPTH_O" "$o_wins" "$draws")"        
+        hdr "$(printf "Game %2d/%2d |  X(d%d) → %2d |  O(d%d) → %2d | Draw → %2d         " "$g" "$GAMES_PER_MATCHUP" "$DEPTH_X" "$x_wins" "$DEPTH_O" "$o_wins" "$draws")"
         if [[ $DEPTH_X -gt $DEPTH_O && $winner = "X" || $DEPTH_O -gt $DEPTH_X && $winner = "O" ]]; then
           WINS_DUE_HIGHER_DEPTH=$((WINS_DUE_HIGHER_DEPTH + 1))
         elif [[ $DEPTH_X -lt $DEPTH_O && $winner = "X" || $DEPTH_O -lt $DEPTH_X && $winner = "O" ]]; then
@@ -273,7 +271,6 @@ function compute.radius() {
   print_summary "${RADIUS}"
 }
 
-
 function compute.all-radiuses() {
   # Run tournament: outer loop over radius, inner over all ordered depth pairs (i,j), i != j
   local r
@@ -290,6 +287,6 @@ function main() {
 
 rm -f "$RESULTS_FILE" && touch "$RESULTS_FILE"
 
-( main "$@" 2>&1 ) | /usr/bin/tee -a "$RESULTS_FILE"
+(main "$@" 2>&1) | /usr/bin/tee -a "$RESULTS_FILE"
 
 exit $?

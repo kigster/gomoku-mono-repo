@@ -56,13 +56,17 @@ async def login(body: UserLogin, pool=Depends(get_pool)):
         logger.warning("Login failed: username=%s", body.username)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid username or password")
 
-    # Track login activity — fire and forget, must not fail the login
+    # Track login activity — fire and forget, must not fail the login.
+    # Bumping last_seen_at here is the only place outside POST
+    # /users/me/seen (and signup's DEFAULT now()) that writes the field;
+    # everywhere else is read-only now that presence is client-driven.
     try:
         await pool.execute(
             """UPDATE users
                SET last_logged_in_at = now(),
-                   logins_count = logins_count + 1,
-                   updated_at = now()
+                   last_seen_at      = now(),
+                   logins_count      = logins_count + 1,
+                   updated_at        = now()
                WHERE id = $1::uuid""",
             str(row["id"]),
         )

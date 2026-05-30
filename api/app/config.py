@@ -49,12 +49,17 @@ class Settings(BaseSettings):
     def effective_domain(self) -> str:
         return self.custom_domain or self.public_domain
 
-    # Database
+    # Database. `postgresql_port` is the single knob the local toolchain
+    # turns when the workstation's Postgres listens on a non-standard port
+    # (Homebrew's postgresql@18 ships on 5433). Exported by the root
+    # .envrc with the same default. Only consulted when `database_url`
+    # is empty and we're falling back to building a localhost DSN.
     db_socket: str = ""
     db_name: str = "gomoku"
     db_user: str = "postgres"
     db_password: str = ""
     database_url: str = ""
+    postgresql_port: int = 5433
 
     # Upstream game engine
     gomoku_httpd_url: str = "http://localhost:10000"
@@ -69,7 +74,8 @@ class Settings(BaseSettings):
 
     # Email
     email_provider: str = "stdout"  # stdout | sendgrid
-    email_from: str = "noreply@gomoku.games"
+    email_from: str = "gomoku@email.gomoku.games"
+    email_from_name: str = "Gomoku Support"
     sendgrid_api_key: str = ""
 
     # LogFire
@@ -88,7 +94,10 @@ class Settings(BaseSettings):
             return (
                 f"postgresql://{self.db_user}{password_part}@/{self.db_name}?host={self.db_socket}"
             )
-        return f"postgresql://{self.db_user}{password_part}@localhost/{self.db_name}"
+        return (
+            f"postgresql://{self.db_user}{password_part}"
+            f"@localhost:{self.postgresql_port}/{self.db_name}"
+        )
 
     model_config = SettingsConfigDict(
         env_prefix="",
