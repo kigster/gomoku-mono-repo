@@ -20,14 +20,17 @@
 # ─── C / C++ (gomoku-c) ────────────────────────────────────────────────────────
 
 # Format every C/C++ source under gomoku-c/src and gomoku-c/tests
+# (skip vendored googletest/ — third-party code we don't own)
 format-gomoku-c:
     @{{ find }} gomoku-c/src gomoku-c/tests \
+        \( -path '*/googletest' -o -path '*/vendor' \) -prune -o \
         \( -name '*.c' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) \
         -print0 | xargs -0 clang-format -i
 
 # Verify C/C++ source is properly formatted (no rewrite)
 check-gomoku-c:
     @{{ find }} gomoku-c/src gomoku-c/tests \
+        \( -path '*/googletest' -o -path '*/vendor' \) -prune -o \
         \( -name '*.c' -o -name '*.cpp' -o -name '*.h' -o -name '*.hpp' \) \
         -print0 | xargs -0 clang-format --dry-run --Werror
 
@@ -83,9 +86,14 @@ format-shell:
 check-shell:
     #!/usr/bin/env bash
     set -uo pipefail
-    rc=0
-    declare -a shell_files
-    shell_files
+    {{find}} . \( -type d \( -name '.git' -o -name '.venv' -o -name '.worktrees' \) -prune \) \
+       -o \( -type f -print0 \) \
+    | while IFS= read -r -d '' f; do
+      IFS= read -r line < "$f" 2>/dev/null || continue
+      case $line in
+        '#!'*bash* | '#!'*'/sh' | '#!'*' sh'* ) printf '%s\0' "$f" ;;
+      esac
+    done | xargs -0 shfmt -i 2 -d
 
 
 # ─── Markdown ──────────────────────────────────────────────────────────────────
