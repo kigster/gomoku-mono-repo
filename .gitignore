@@ -37,7 +37,10 @@ compile_commands.json
 # Ignored:   .env (deploy secrets), .env.*.local (personal overrides).
 .env
 .env.local
-.env.*.local
+.env.development
+.env.staging
+.env.test
+
 
 # ─── Terraform ────────────────────────────────────────────────────────────────
 .terraform/
