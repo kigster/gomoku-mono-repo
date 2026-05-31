@@ -16,7 +16,7 @@
 e2e:
     export SECRET="$(cat .secret)"; \
     bin/gctl stop || true; \
-    bin/gctl start || exit $?; \
+    bin/gctl start -r || exit $?; \
     cd frontend && npx cypress run --e2e
 
 alias test-cypress := e2e
