@@ -24,6 +24,7 @@ _deps/
 compile_commands.json
 
 # ─── IDE ──────────────────────────────────────────────────────────────────────
+
 .idea/
 .vscode/
 .vs/
@@ -32,6 +33,7 @@ compile_commands.json
 *.user
 *.VC.opendb
 *.VC.db
+
 # ─── Environment ──────────────────────────────────────────────────────────────
 # Committed: .env.development, .env.test, .env.ci (no secrets, defaults).
 # Ignored:   .env (deploy secrets), .env.*.local (personal overrides).
@@ -42,8 +44,8 @@ compile_commands.json
 .env.production
 .env.test
 
-
 # ─── Terraform ────────────────────────────────────────────────────────────────
+
 .terraform/
 .terraform.lock.hcl
 *.tfstate
@@ -52,6 +54,7 @@ compile_commands.json
 *.tfvars
 *.tfvars.json
 crash.log
+
 # ─── Python ───────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
@@ -67,13 +70,15 @@ htmlcov/
 # ─── Node/Frontend ────────────────────────────────────────────────────────────
 node_modules/
 **/.vite
-.worktrees/
+**/.worktrees/
+
 # ─── Claude Code (auto-installed plugin artifacts) ────────────────────────────
 .claude/plugins/cache/
 .claude/plugins/marketplaces/
 .claude/plugins/data/
 .claude/settings.local.json
 .claude/worktrees/
+
 # ─── OS / Misc ────────────────────────────────────────────────────────────────
 **/.DS_Store
 **/*.log
@@ -81,7 +86,7 @@ nohup.out
 /api/logs/**
 /.rubymate
 /tmp/**
-# 
+
 # ─── API ────────────────────────────────────────────────────────────────
 api/public/**
 !api/public/.gitkeep
