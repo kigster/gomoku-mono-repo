@@ -73,6 +73,7 @@ node_modules/
 .claude/plugins/marketplaces/
 .claude/plugins/data/
 .claude/settings.local.json
+.claude/worktrees/
 # ─── OS / Misc ────────────────────────────────────────────────────────────────
 **/.DS_Store
 **/*.log
