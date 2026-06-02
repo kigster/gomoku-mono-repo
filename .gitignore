@@ -96,3 +96,4 @@ api/.coverage
 /tests/eval/results
 **/*.tmp
 game*json
+/.last-httpd-type

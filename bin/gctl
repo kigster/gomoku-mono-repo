@@ -20,6 +20,7 @@ export SCRIPT_DIR
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 export PROJECT_DIR
 
+export LAST_HTTPD_TYPE=.last-httpd-type
 export PROJECT_ROOT="$(pwd -P)"
 
 [[ -f .secret || -n ${SECRET} ]] || {
@@ -742,6 +743,13 @@ cmd_for_each() {
   local -n default_order=$1
   shift
 
+  # This is the default restore from when we started it
+  echo ${GOMOKU_ENGINE} > ${LAST_HTTPD_TYPE}
+  if [[ -s ${LAST_HTTPD_TYPE} ]]; then
+    export GOMOKU_ENGINE=$(cat ${LAST_HTTPD_TYPE})
+    rm -f ${LAST_HTTPD_TYPE}
+  fi
+
   local -a components=()
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -782,6 +790,9 @@ cmd_start() {
 
   run.set-all abort-on-error
 
+  command -v just >/dev/null || brew install just 
+  just install
+
   while [[ $# -gt 0 ]]; do
     case $1 in
     -w | --workers)
@@ -811,6 +822,8 @@ cmd_start() {
       ;;
     esac
   done
+
+  echo ${GOMOKU_ENGINE} > ${LAST_HTTPD_TYPE}}
 
   [[ -z "$workers" ]] && workers=${DEFAULT_WORKERS}
 
