@@ -36,5 +36,9 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test-setup.ts',
     css: true,
+    // Unit tests live under src/. Keep vitest out of the e2e suites:
+    // cypress/ (*.cy.ts) and e2e-pw/ (Playwright *.spec.ts, which throws
+    // if imported outside the Playwright runner).
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
   },
 })
