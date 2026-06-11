@@ -898,9 +898,11 @@ function Message({
   const shadow = isLight
     ? "shadow-sm shadow-black/30"
     : "shadow-sm shadow-black/40";
-  const bubbleText = isLight
-    ? "text-[19px] leading-snug"
-    : "text-[17px] leading-snug";
+  // Chat message text: Barlow Condensed SemiBold at 10px (loaded from
+  // Google Fonts in index.html). The Tailwind arbitrary family
+  // `font-['Barlow_Condensed']` emits `font-family: Barlow Condensed`.
+  const bubbleText =
+    "font-['Barlow_Condensed'] font-semibold text-[10px] leading-snug";
   return (
     <div
       className={[
