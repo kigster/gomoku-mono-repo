@@ -34,7 +34,7 @@ from typing import Literal
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from app.database import get_pool
 from app.security import get_current_user
@@ -97,22 +97,28 @@ class OnlineUserEntry(BaseModel):
     to the current state — multiplayer_games.id for human-battle, games.id
     for ai-battle, NULL otherwise. `opponent_username` is populated only
     when `state == 'human-battle'` — the other participant in the active
-    multiplayer game — so the chat panel can render
-    "playing @<opponent>" without a second round-trip.
+    multiplayer game. It is retained on the wire for API stability but is
+    not currently rendered by any consumer (the Who's Online modal shows
+    only a playing indicator, not the opponent's name).
 
     The remaining fields power the Who's Online modal:
 
     - `elo_rating` / `session_started_at` — the "Elo Score" / "Since"
       columns. `session_started_at` is the start of this user's current
-      online session (see migration 0016).
+      online session (NOT NULL since migration 0016).
     - relationship flags, computed **relative to the caller**:
-        - `is_friend`    — mutual follow (both friendships rows exist),
         - `is_follower`  — this user follows the caller,
         - `is_following` — the caller follows this user,
+        - `is_friend`    — mutual follow; derived from the two directional
+          flags so `is_friend == is_follower ∧ is_following` holds by
+          construction (see the computed property below),
         - `is_blocked`   — the caller has blocked this user.
-    - `is_champion` — this user tops the Elo leaderboard (the same
-      ordering /leaderboard uses), so the modal and leaderboard can
-      draw a crown."""
+    - `is_champion` — this user is the single top-ranked player. The
+      tie-break ordering matches /leaderboard
+      (`elo_rating DESC, elo_games_count DESC, created_at ASC`), but
+      eligibility is looser: any user with a rated game
+      (`elo_games_count > 0`), not just those with a winning AI game. So
+      the crowned user may not be the visible /leaderboard #1."""
 
     user_id: str
     username: str
@@ -121,12 +127,18 @@ class OnlineUserEntry(BaseModel):
     opponent_username: str | None = None
     last_seen_at: datetime
     elo_rating: int
-    session_started_at: datetime | None = None
-    is_friend: bool = False
+    session_started_at: datetime
     is_follower: bool = False
     is_following: bool = False
     is_blocked: bool = False
     is_champion: bool = False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def is_friend(self) -> bool:
+        """Mutual follow ⇒ friends. Derived, not stored, so the
+        `is_friend == is_follower ∧ is_following` invariant cannot drift."""
+        return self.is_follower and self.is_following
 
 
 class OnlineUsersResponse(BaseModel):
@@ -391,9 +403,11 @@ async def online(
     round-trip per row.
 
     `is_champion` is computed against a single scalar — the id of the
-    top-ranked user by the same ordering /leaderboard uses (highest
-    Elo among players who have actually played a ranked game) — so at
-    most one row in any page can carry the crown.
+    top-ranked user (highest Elo among players with a rated game). The
+    tie-break ordering matches /leaderboard, but eligibility is looser
+    (`elo_games_count > 0` vs the leaderboard's winning-AI-game filter),
+    so the crowned user may not be the visible leaderboard #1. At most
+    one row in any page can carry the crown.
     """
     caller_id = str(user["id"])
     rows = await pool.fetch(
@@ -471,9 +485,8 @@ async def online(
                 last_seen_at=r["last_seen_at"],
                 elo_rating=int(r["elo_rating"]),
                 session_started_at=r["session_started_at"],
-                # Mutual follow ⇒ friends. The two directional flags are
-                # also surfaced for the "my followers" filter.
-                is_friend=bool(r["caller_follows"] and r["follows_caller"]),
+                # `is_friend` is derived from these two directional flags
+                # by the model's computed property — not set here.
                 is_follower=bool(r["follows_caller"]),
                 is_following=bool(r["caller_follows"]),
                 is_blocked=bool(r["is_blocked"]),
