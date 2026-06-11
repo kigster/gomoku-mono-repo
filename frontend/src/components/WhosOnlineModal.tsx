@@ -15,7 +15,8 @@ export interface OnlineUser {
   opponent_username: string | null;
   last_seen_at: string;
   elo_rating: number;
-  session_started_at: string | null;
+  // NOT NULL on the wire (migration 0016); always present.
+  session_started_at: string;
   is_friend: boolean;
   is_follower: boolean;
   is_following: boolean;
@@ -38,13 +39,20 @@ export const SIMILAR_ELO_BAND = 250;
 // query is cheap; 4s keeps it lively without hammering the API.
 const POLL_MS = 4000;
 
-const FILTERS: ReadonlyArray<{ key: WhosOnlineFilter; label: string }> = [
-  { key: "available", label: "Available, can play (similar level)" },
-  { key: "unavailable", label: "Unavailable" },
-  { key: "friends", label: "My friends only" },
-  { key: "followers", label: "My followers" },
-  { key: "blocked", label: "Users I blocked" },
-];
+// Typed as a Record so the compiler forces a label for every
+// WhosOnlineFilter member — a new filter can't be added to the union
+// without also giving the dropdown a label for it.
+const FILTER_LABELS: Record<WhosOnlineFilter, string> = {
+  available: "Available, can play (similar level)",
+  unavailable: "Unavailable",
+  friends: "My friends only",
+  followers: "My followers",
+  blocked: "Users I blocked",
+};
+
+// Dropdown render order, derived from the label map so every labelled
+// filter is reachable (insertion order is stable in JS objects).
+const FILTER_ORDER = Object.keys(FILTER_LABELS) as WhosOnlineFilter[];
 
 function isPlaying(u: OnlineUser): boolean {
   return u.state === "human-battle" || u.state === "ai-battle";
@@ -61,6 +69,12 @@ export function filterOnlineUsers(
   const self = selfUsername.toLowerCase();
   const others = users.filter((u) => u.username.toLowerCase() !== self);
 
+  // NOTE: "available" and "unavailable" are not strictly complementary.
+  // An idle, in-band user matches BOTH (available because not playing;
+  // unavailable because idle), and a "chatting" user matches available
+  // but not unavailable. The product semantics here are still open — see
+  // PR #113 review — so the current behaviour is preserved deliberately
+  // rather than guessed at.
   let matched: OnlineUser[];
   switch (filter) {
     case "available":
@@ -86,6 +100,12 @@ export function filterOnlineUsers(
     case "blocked":
       matched = others.filter((u) => u.is_blocked);
       break;
+    default: {
+      // Exhaustiveness guard: a new WhosOnlineFilter member without a
+      // case here is a compile error.
+      const _exhaustive: never = filter;
+      return _exhaustive;
+    }
   }
 
   return [...matched].sort(
@@ -148,7 +168,11 @@ export default function WhosOnlineModal({
   // silently so the table doesn't flicker every 4s.
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // True when the last good load is older than a couple of poll cycles —
+  // the table is still shown, but flagged as possibly stale.
+  const [stale, setStale] = useState(false);
   const loadedOnce = useRef(false);
+  const lastSuccessAt = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,19 +184,30 @@ export default function WhosOnlineModal({
         });
         if (!resp.ok) throw new Error(`Failed to load online users (${resp.status})`);
         const body = (await resp.json()) as {
-          users: OnlineUser[];
-          caller_elo: number;
+          users?: OnlineUser[];
+          caller_elo?: number;
         };
         if (cancelled) return;
-        setUsers(body.users);
+        // Guard against a malformed payload rather than pushing
+        // `undefined` into state (which would crash the filter/render).
+        setUsers(Array.isArray(body.users) ? body.users : []);
         setCallerElo(body.caller_elo ?? 1500);
         setError("");
+        setStale(false);
+        lastSuccessAt.current = Date.now();
       } catch (e) {
         if (cancelled) return;
         // Don't clobber a good table on a transient poll failure; only
-        // surface an error if we've never managed to load.
+        // surface a hard error if we've never managed to load. Once
+        // we've gone a couple of poll cycles with no success, flag the
+        // shown data as stale instead of silently lying that it's live.
         if (!loadedOnce.current) {
           setError(e instanceof Error ? e.message : "unknown error");
+        } else {
+          console.warn("Who's Online poll failed; showing last known list", e);
+          if (Date.now() - lastSuccessAt.current > 2 * POLL_MS) {
+            setStale(true);
+          }
         }
       } finally {
         if (!cancelled) {
@@ -195,8 +230,7 @@ export default function WhosOnlineModal({
     [users, filter, callerElo, currentUsername],
   );
 
-  const activeLabel =
-    FILTERS.find((f) => f.key === filter)?.label ?? "Filter";
+  const activeLabel = FILTER_LABELS[filter];
 
   // The Filter dropdown nav: centered button, left-aligned menu items,
   // a divider after the first ("available") option.
@@ -231,25 +265,25 @@ export default function WhosOnlineModal({
           className="absolute top-full z-20 mt-1 w-72 overflow-hidden rounded-md border
                      border-neutral-600 bg-neutral-900 py-1 text-left shadow-xl shadow-black/50"
         >
-          {FILTERS.map((f, i) => (
-            <li key={f.key}>
+          {FILTER_ORDER.map((key, i) => (
+            <li key={key}>
               {i === 1 && <hr className="my-1 border-neutral-700" />}
               <button
                 type="button"
                 role="option"
-                aria-selected={filter === f.key}
+                aria-selected={filter === key}
                 onClick={() => {
-                  setFilter(f.key);
+                  setFilter(key);
                   setMenuOpen(false);
                 }}
                 className={`block w-full px-4 py-2 text-left text-sm transition-colors
                            hover:bg-neutral-700 ${
-                             filter === f.key
+                             filter === key
                                ? "font-semibold text-amber-300"
                                : "text-neutral-300"
                            }`}
               >
-                {f.label}
+                {FILTER_LABELS[key]}
               </button>
             </li>
           ))}
@@ -272,6 +306,11 @@ export default function WhosOnlineModal({
       )}
       {error && !loading && (
         <p className="py-8 text-center text-red-400">{error}</p>
+      )}
+      {stale && !loading && !error && (
+        <p className="px-4 py-2 text-center text-xs text-amber-400/80">
+          Reconnecting… showing the last known list.
+        </p>
       )}
       {!loading && !error && visible.length === 0 && (
         <p className="py-8 text-center text-neutral-400">

@@ -116,7 +116,13 @@ describe("WhosOnlineModal render", () => {
         ),
     );
   });
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+  });
+
+  const fetchMock = () =>
+    global.fetch as unknown as ReturnType<typeof vi.fn>;
 
   function renderModal() {
     return render(
@@ -164,5 +170,59 @@ describe("WhosOnlineModal render", () => {
     await waitFor(() => expect(screen.getByText("dave")).toBeInTheDocument());
     const daveRow = screen.getByText("dave").closest("tr")!;
     expect(within(daveRow).getByRole("img", { name: /in a game/i })).toBeInTheDocument();
+  });
+
+  it("surfaces a hard error when the very first load fails", async () => {
+    fetchMock().mockImplementation(
+      async () => new Response("nope", { status: 500 }),
+    );
+    renderModal();
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Failed to load online users \(500\)/i),
+      ).toBeInTheDocument(),
+    );
+  });
+
+  it("shows the empty-state caption when no users match", async () => {
+    fetchMock().mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({ caller_elo: 1500, users: [mkUser({ username: "alice" })] }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+    );
+    renderModal();
+    // Only the caller is online → dropped client-side → empty list.
+    await waitFor(() =>
+      expect(screen.getByText(/No players match this filter/i)).toBeInTheDocument(),
+    );
+  });
+
+  it("keeps the last good table and flags staleness when later polls fail", async () => {
+    vi.useFakeTimers();
+    let calls = 0;
+    fetchMock().mockImplementation(async () => {
+      calls += 1;
+      if (calls === 1) {
+        return new Response(
+          JSON.stringify({
+            caller_elo: 1500,
+            users: [mkUser({ username: "erin", is_friend: true, is_follower: true })],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      throw new Error("network down");
+    });
+    renderModal();
+    // First load resolves and renders the table.
+    await vi.advanceTimersByTimeAsync(0);
+    expect(screen.getByText("erin")).toBeInTheDocument();
+    // Subsequent polls fail; once past 2× the poll interval, the table
+    // stays but a staleness hint appears.
+    await vi.advanceTimersByTimeAsync(4000 * 3);
+    expect(screen.getByText("erin")).toBeInTheDocument();
+    expect(screen.getByText(/Reconnecting/i)).toBeInTheDocument();
   });
 });

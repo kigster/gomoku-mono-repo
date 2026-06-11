@@ -2,7 +2,7 @@
 // mark a user who is currently in a game ("playing"). Implemented as an
 // inline SVG with SMIL animation rather than an animated GIF so it stays
 // crisp at every size (70px on desktop, 25px on phones) and needs no
-// asset pipeline — the marks fade in one at a time on a looping ~5s
+// asset pipeline — the marks pop in one at a time on a looping ~5s
 // timeline, then clear and replay.
 //
 // Colours are fixed (not `currentColor`) so the indicator reads on every
@@ -10,8 +10,9 @@
 // neutral alike.
 
 interface PlayingIndicatorProps {
-  // Rendered width/height in px. Square.
-  size?: number;
+  // Sizing is driven by `className` (Tailwind h-/w-, which override the
+  // SVG width/height below). The attributes are only a fallback for a
+  // caller that supplies no sizing class.
   className?: string;
 }
 
@@ -32,13 +33,12 @@ const X_COLOR = "#f59e0b"; // amber
 const O_COLOR = "#38bdf8"; // sky
 
 export default function PlayingIndicator({
-  size = 70,
   className = "",
 }: PlayingIndicatorProps) {
   return (
     <svg
-      width={size}
-      height={size}
+      width={70}
+      height={70}
       viewBox="0 0 90 90"
       className={className}
       role="img"
