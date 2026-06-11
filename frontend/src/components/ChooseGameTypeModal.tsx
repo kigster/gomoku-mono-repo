@@ -143,6 +143,7 @@ export default function ChooseGameTypeModal({
     if (createdKeyRef.current === configKey) return;
 
     let cancelled = false;
+    let committed = false;
     const previousCode = game?.code;
     createdKeyRef.current = configKey;
     setCreating(true);
@@ -159,7 +160,19 @@ export default function ChooseGameTypeModal({
         const created = await apiNewGame(authToken, {
           host_color: desiredHostColor,
         });
-        if (!cancelled) setGame(created);
+        if (cancelled) {
+          // This run was torn down before the create landed (a StrictMode
+          // remount or a config change). Cancel the orphaned waiting row
+          // instead of leaking it, then bail.
+          try {
+            await apiCancelGame(authToken, created.code);
+          } catch {
+            // Lazy-expire path covers it eventually.
+          }
+          return;
+        }
+        committed = true;
+        setGame(created);
       } catch (err) {
         if (!cancelled) {
           setCreateError(
@@ -173,6 +186,14 @@ export default function ChooseGameTypeModal({
     })();
     return () => {
       cancelled = true;
+      // Roll back the key only if this run was torn down before it committed
+      // a game (the StrictMode remount case), so the next run recreates the
+      // invite instead of early-returning on the matching ref and hanging on
+      // "Generating…". If a game WAS committed, keep the key so a later
+      // switch-to-AI can still cancel the live invite.
+      if (!committed && createdKeyRef.current === configKey) {
+        createdKeyRef.current = null;
+      }
     };
     // game?.code intentionally omitted: we only re-run when the desired
     // config changes, not when the created game's code arrives.
