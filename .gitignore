@@ -97,4 +97,8 @@ api/.coverage
 **/*.tmp
 game*json
 /.last-httpd-type
-/frontend/test-results
+# Playwright e2e artifacts
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/playwright/.cache/

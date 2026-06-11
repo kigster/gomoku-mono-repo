@@ -34,7 +34,7 @@ from typing import Literal
 
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from app.database import get_pool
 from app.security import get_current_user
@@ -97,9 +97,28 @@ class OnlineUserEntry(BaseModel):
     to the current state — multiplayer_games.id for human-battle, games.id
     for ai-battle, NULL otherwise. `opponent_username` is populated only
     when `state == 'human-battle'` — the other participant in the active
-    multiplayer game — so the chat panel can render
-    "playing @<opponent>" without a second round-trip. The chat panel's
-    `/who` command renders this list grouped by state."""
+    multiplayer game. It is retained on the wire for API stability but is
+    not currently rendered by any consumer (the Who's Online modal shows
+    only a playing indicator, not the opponent's name).
+
+    The remaining fields power the Who's Online modal:
+
+    - `elo_rating` / `session_started_at` — the "Elo Score" / "Since"
+      columns. `session_started_at` is the start of this user's current
+      online session (NOT NULL since migration 0016).
+    - relationship flags, computed **relative to the caller**:
+        - `is_follower`  — this user follows the caller,
+        - `is_following` — the caller follows this user,
+        - `is_friend`    — mutual follow; derived from the two directional
+          flags so `is_friend == is_follower ∧ is_following` holds by
+          construction (see the computed property below),
+        - `is_blocked`   — the caller has blocked this user.
+    - `is_champion` — this user is the single top-ranked player. The
+      tie-break ordering matches /leaderboard
+      (`elo_rating DESC, elo_games_count DESC, created_at ASC`), but
+      eligibility is looser: any user with a rated game
+      (`elo_games_count > 0`), not just those with a winning AI game. So
+      the crowned user may not be the visible /leaderboard #1."""
 
     user_id: str
     username: str
@@ -107,11 +126,29 @@ class OnlineUserEntry(BaseModel):
     active_game_id: str | None
     opponent_username: str | None = None
     last_seen_at: datetime
+    elo_rating: int
+    session_started_at: datetime
+    is_follower: bool = False
+    is_following: bool = False
+    is_blocked: bool = False
+    is_champion: bool = False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def is_friend(self) -> bool:
+        """Mutual follow ⇒ friends. Derived, not stored, so the
+        `is_friend == is_follower ∧ is_following` invariant cannot drift."""
+        return self.is_follower and self.is_following
 
 
 class OnlineUsersResponse(BaseModel):
+    """`caller_elo` is the requesting user's own Elo, echoed once at the
+    top level so the modal can compute the "similar level" (±250 Elo)
+    filter client-side without a second lookup."""
+
     users: list[OnlineUserEntry]
     total: int
+    caller_elo: int = 1500
 
 
 # ---------------------------------------------------------------------------
@@ -338,47 +375,79 @@ async def who(
 
 @router.get("/online", response_model=OnlineUsersResponse)
 async def online(
-    limit: int = Query(default=10, ge=1, le=100),
+    limit: int = Query(default=10, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
-    user: dict = Depends(get_current_user),  # noqa: ARG001 — auth-only
+    user: dict = Depends(get_current_user),
     pool=Depends(get_pool),
 ) -> OnlineUsersResponse:
     """List users currently considered "online" (see migration 0014's
-    `online_users` view docstring) with their state and any active
-    game id, paginated. The chat panel's `/who` slash command renders
-    a page at a time — default page size 10.
+    `online_users` view docstring) with their state, active game id,
+    Elo, session start, and relationship flags relative to the caller,
+    paginated. The Who's Online modal requests one big page
+    (`limit=200`) and filters client-side; the legacy chat `/who` used
+    small pages — both share this endpoint.
 
     Tightens the view's 8h presence window down to
-    `ONLINE_PRESENCE_WINDOW_MINUTES` for the chat-panel UX — yesterday's
-    logins shouldn't pollute the "currently online" list even though
-    the view itself keeps them so other consumers can decide their own
-    cutoff.
+    `ONLINE_PRESENCE_WINDOW_MINUTES` for the UX — yesterday's logins
+    shouldn't pollute the "currently online" list even though the view
+    itself keeps them so other consumers can decide their own cutoff.
 
-    Excludes nobody — including the caller — so a user can spot
-    themselves in the list and tell at a glance which state the view
-    derived for them. The page is sorted by `last_seen_at DESC` (most-
+    Excludes nobody server-side — including the caller — so the row set
+    stays stable for every consumer; the modal drops the caller's own
+    row client-side. The page is sorted by `last_seen_at DESC` (most-
     recently-active first) by the view itself.
 
     For rows in `human-battle`, joins `multiplayer_games` + `users` to
     resolve the other participant's username as `opponent_username`,
     so the client can render "playing @<opponent>" without a second
     round-trip per row.
+
+    `is_champion` is computed against a single scalar — the id of the
+    top-ranked user (highest Elo among players with a rated game). The
+    tie-break ordering matches /leaderboard, but eligibility is looser
+    (`elo_games_count > 0` vs the leaderboard's winning-AI-game filter),
+    so the crowned user may not be the visible leaderboard #1. At most
+    one row in any page can carry the crown.
     """
+    caller_id = str(user["id"])
     rows = await pool.fetch(
         f"""
+        WITH champion AS (
+            SELECT id
+            FROM   users
+            WHERE  elo_games_count > 0
+            ORDER BY elo_rating DESC, elo_games_count DESC, created_at ASC
+            LIMIT 1
+        )
         SELECT
             ou.user_id,
             ou.username,
             ou.state,
             ou.active_game_id,
             ou.last_seen_at,
-            opp.username AS opponent_username
+            u.elo_rating,
+            u.session_started_at,
+            opp.username AS opponent_username,
+            EXISTS (
+                SELECT 1 FROM friendships f
+                WHERE f.user_id = $3::uuid AND f.friend_id = ou.user_id
+            ) AS caller_follows,
+            EXISTS (
+                SELECT 1 FROM friendships f
+                WHERE f.user_id = ou.user_id AND f.friend_id = $3::uuid
+            ) AS follows_caller,
+            EXISTS (
+                SELECT 1 FROM blocks b
+                WHERE b.blocker_id = $3::uuid AND b.blocked_id = ou.user_id
+            ) AS is_blocked,
+            (ou.user_id = (SELECT id FROM champion)) AS is_champion
         FROM   online_users ou
+        JOIN   users u ON u.id = ou.user_id
         LEFT JOIN LATERAL (
-            SELECT u.username
+            SELECT u2.username
             FROM   multiplayer_games mg
-            JOIN   users u
-              ON   u.id = CASE
+            JOIN   users u2
+              ON   u2.id = CASE
                             WHEN mg.host_user_id = ou.user_id
                                 THEN mg.guest_user_id
                             ELSE mg.host_user_id
@@ -392,6 +461,7 @@ async def online(
         """,
         limit,
         offset,
+        caller_id,
     )
     total = await pool.fetchval(
         f"""
@@ -399,6 +469,10 @@ async def online(
         WHERE last_seen_at > NOW()
               - INTERVAL '{ONLINE_PRESENCE_WINDOW_MINUTES} minutes'
         """
+    )
+    caller_elo = await pool.fetchval(
+        "SELECT elo_rating FROM users WHERE id = $1::uuid",
+        caller_id,
     )
     return OnlineUsersResponse(
         users=[
@@ -409,8 +483,17 @@ async def online(
                 active_game_id=str(r["active_game_id"]) if r["active_game_id"] else None,
                 opponent_username=r["opponent_username"],
                 last_seen_at=r["last_seen_at"],
+                elo_rating=int(r["elo_rating"]),
+                session_started_at=r["session_started_at"],
+                # `is_friend` is derived from these two directional flags
+                # by the model's computed property — not set here.
+                is_follower=bool(r["follows_caller"]),
+                is_following=bool(r["caller_follows"]),
+                is_blocked=bool(r["is_blocked"]),
+                is_champion=bool(r["is_champion"]),
             )
             for r in rows
         ],
         total=int(total or 0),
+        caller_elo=int(caller_elo if caller_elo is not None else 1500),
     )

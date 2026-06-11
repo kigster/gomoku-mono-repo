@@ -21,3 +21,16 @@ e2e:
 
 alias test-cypress := e2e
 alias test-e2e := e2e
+
+# Two-human Playwright e2e: two real browser contexts play a full game.
+# Unlike the Cypress suite (one context, JWT-swapped), this drives two
+# concurrent sessions so moves propagate live between them. Override the
+# target with PW_BASE_URL / PW_API_BASE / PW_DB_URL.
+e2e-playwright:
+    export SECRET="$(cat .secret)"; \
+    bin/gctl stop || true; \
+    bin/gctl start -r || exit $?; \
+    cd frontend && npx playwright test
+
+alias test-e2e-playwright := e2e-playwright
+alias test-playwright := e2e-playwright

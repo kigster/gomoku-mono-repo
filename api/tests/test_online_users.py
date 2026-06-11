@@ -376,3 +376,148 @@ async def test_online_endpoint_pagination(client: AsyncClient, auth_headers, mak
     page1_names = {u["username"] for u in page1["users"]}
     page2_names = {u["username"] for u in page2["users"]}
     assert page1_names.isdisjoint(page2_names)
+
+
+# ---------------------------------------------------------------------------
+# Who's Online modal enrichment: elo, session start, relationship flags,
+# champion crown (GET /social/online additions).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_online_includes_elo_session_and_default_flags(client: AsyncClient, auth_headers):
+    """Every row carries Elo + session start, and a user with no social
+    edges has all relationship flags false. `caller_elo` is echoed once
+    at the top level."""
+    body = (await client.get("/social/online", headers=auth_headers)).json()
+    assert body["caller_elo"] == 1500
+    me = next(u for u in body["users"] if u["username"] == "testplayer")
+    assert me["elo_rating"] == 1500
+    assert me["session_started_at"] is not None
+    assert me["is_friend"] is False
+    assert me["is_follower"] is False
+    assert me["is_following"] is False
+    assert me["is_blocked"] is False
+    assert me["is_champion"] is False
+
+
+@pytest.mark.asyncio
+async def test_online_mutual_follow_is_friend(
+    client: AsyncClient, auth_headers, second_registered_user
+):
+    """A mutual follow surfaces as `is_friend` (and both directional
+    flags) on the other user's row."""
+    bob = second_registered_user["username"]
+    await client.post("/social/follow", headers=auth_headers, json={"target_username": bob})
+    await client.post(
+        "/social/follow",
+        headers=second_registered_user["headers"],
+        json={"target_username": "testplayer"},
+    )
+    body = (await client.get("/social/online", headers=auth_headers)).json()
+    bob_row = next(u for u in body["users"] if u["username"] == bob)
+    assert bob_row["is_friend"] is True
+    assert bob_row["is_follower"] is True
+    assert bob_row["is_following"] is True
+
+
+@pytest.mark.asyncio
+async def test_online_one_directional_follow_is_follower_only(
+    client: AsyncClient, auth_headers, second_registered_user
+):
+    """When bob follows the caller but the caller doesn't follow back,
+    bob is a `follower`, not a `friend`, and the caller is not
+    `following` him."""
+    await client.post(
+        "/social/follow",
+        headers=second_registered_user["headers"],
+        json={"target_username": "testplayer"},
+    )
+    body = (await client.get("/social/online", headers=auth_headers)).json()
+    bob_row = next(u for u in body["users"] if u["username"] == second_registered_user["username"])
+    assert bob_row["is_follower"] is True
+    assert bob_row["is_friend"] is False
+    assert bob_row["is_following"] is False
+
+
+@pytest.mark.asyncio
+async def test_online_block_sets_is_blocked(
+    client: AsyncClient, auth_headers, second_registered_user
+):
+    """A caller-initiated block marks the blocked user's row, and the
+    blocked user stays visible (the modal colours them, not hides
+    them)."""
+    bob = second_registered_user["username"]
+    await client.post("/social/block", headers=auth_headers, json={"target_username": bob})
+    body = (await client.get("/social/online", headers=auth_headers)).json()
+    bob_row = next(u for u in body["users"] if u["username"] == bob)
+    assert bob_row["is_blocked"] is True
+
+
+@pytest.mark.asyncio
+async def test_online_marks_single_champion(
+    client: AsyncClient, auth_headers, second_registered_user
+):
+    """The top-ranked user (highest Elo among those who've played a
+    ranked game) gets `is_champion`; nobody else does."""
+    bob = second_registered_user["username"]
+    conn = await asyncpg.connect(TEST_DSN)
+    try:
+        await conn.execute(
+            "UPDATE users SET elo_rating = 1800, elo_games_count = 5 WHERE username = $1",
+            bob,
+        )
+    finally:
+        await conn.close()
+    body = (await client.get("/social/online", headers=auth_headers)).json()
+    bob_row = next(u for u in body["users"] if u["username"] == bob)
+    me_row = next(u for u in body["users"] if u["username"] == "testplayer")
+    assert bob_row["is_champion"] is True
+    assert me_row["is_champion"] is False
+
+
+@pytest.mark.asyncio
+async def test_online_champion_tiebreak_on_games_count(
+    client: AsyncClient, auth_headers, second_registered_user
+):
+    """When two ranked players share the top Elo, exactly one is crowned.
+    The tie breaks on `elo_games_count DESC` (then `created_at ASC`), so
+    the higher-volume player wins. Guards the "at most one crown per
+    page" promise on the equal-Elo path the single-champion test skips."""
+    bob = second_registered_user["username"]
+    conn = await asyncpg.connect(TEST_DSN)
+    try:
+        await conn.execute(
+            "UPDATE users SET elo_rating = 1800, elo_games_count = 5 WHERE username = $1",
+            bob,
+        )
+        await conn.execute(
+            "UPDATE users SET elo_rating = 1800, elo_games_count = 3 "
+            "WHERE username = 'testplayer'"
+        )
+    finally:
+        await conn.close()
+    body = (await client.get("/social/online", headers=auth_headers)).json()
+    champions = [u["username"] for u in body["users"] if u["is_champion"]]
+    assert champions == [bob], champions
+
+
+@pytest.mark.asyncio
+async def test_online_unranked_high_elo_not_champion(
+    client: AsyncClient, auth_headers, second_registered_user
+):
+    """A user with a high Elo but zero ranked games is NOT champion —
+    the CTE requires `elo_games_count > 0`. With nobody qualifying, no
+    row carries the crown."""
+    bob = second_registered_user["username"]
+    conn = await asyncpg.connect(TEST_DSN)
+    try:
+        await conn.execute(
+            "UPDATE users SET elo_rating = 3000, elo_games_count = 0 WHERE username = $1",
+            bob,
+        )
+    finally:
+        await conn.close()
+    body = (await client.get("/social/online", headers=auth_headers)).json()
+    champions = [u["username"] for u in body["users"] if u["is_champion"]]
+    assert champions == [], champions

@@ -6,20 +6,30 @@ interface ModalShellProps {
   title: ReactNode;
   onClose?: () => void;
   children: ReactNode;
+  // Optional non-scrolling band rendered between the title header and
+  // the scrollable body. Used for sticky controls (e.g. a filter nav)
+  // that must stay put while the body scrolls underneath.
+  subheader?: ReactNode;
   footer?: ReactNode;
   widthClassName?: string;
   bodyClassName?: string;
   titleClassName?: string;
+  // Extra classes for the dialog box itself — e.g. a fixed tall height
+  // (`h-[88vh]`) so the modal fills the viewport and grows with it
+  // rather than shrinking to its content.
+  dialogClassName?: string;
 }
 
 export default function ModalShell({
   title,
   onClose,
   children,
+  subheader,
   footer,
   widthClassName = "max-w-5xl",
   bodyClassName = "",
   titleClassName = "",
+  dialogClassName = "",
 }: ModalShellProps) {
   useEffect(() => {
     if (!onClose) return;
@@ -41,7 +51,7 @@ export default function ModalShell({
 
       <div
         className={`relative z-10 flex w-full ${widthClassName} max-h-[88vh] flex-col overflow-hidden
-                    rounded-[1.6rem] border border-neutral-700 bg-neutral-800 shadow-2xl shadow-black/60`}
+                    rounded-[1.6rem] border border-neutral-700 bg-neutral-800 shadow-2xl shadow-black/60 ${dialogClassName}`}
         role="dialog"
         aria-modal="true"
       >
@@ -53,6 +63,12 @@ export default function ModalShell({
           </h2>
           {onClose && <ModalCloseButton onClick={onClose} />}
         </div>
+
+        {subheader && (
+          <div className="border-b border-neutral-700 px-6 py-3 sm:px-8">
+            {subheader}
+          </div>
+        )}
 
         <div
           className={`min-h-0 flex-1 overflow-y-auto px-6 py-6 sm:px-8 ${bodyClassName}`}
