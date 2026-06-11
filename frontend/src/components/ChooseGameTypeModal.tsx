@@ -260,7 +260,7 @@ export default function ChooseGameTypeModal({
         {gameType === "human" && (
           <>
             <fieldset>
-              <legend className="mb-2 text-sm font-medium text-neutral-300">
+              <legend className="mb-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">
                 Who chooses the playing color?
               </legend>
               <div className="grid grid-cols-2 gap-3">
@@ -281,7 +281,7 @@ export default function ChooseGameTypeModal({
 
             {chooser === "host" && (
               <fieldset>
-                <legend className="mb-2 text-sm font-medium text-neutral-300">
+                <legend className="mb-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">
                   Your color
                 </legend>
                 <div className="grid grid-cols-2 gap-3">
@@ -315,7 +315,7 @@ export default function ChooseGameTypeModal({
             <button
               type="button"
               onClick={handleStartAI}
-              className="rounded-md bg-amber-500 px-6 py-3 text-base font-bold text-neutral-900 shadow transition hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-300/50"
+              className="rounded-lg bg-gradient-to-b from-amber-400 to-amber-500 px-6 py-3 text-base font-bold text-neutral-900 shadow-lg shadow-amber-500/20 transition-all hover:from-amber-300 hover:to-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-300/50 active:scale-[.98]"
             >
               Start
             </button>
@@ -337,10 +337,10 @@ export default function ChooseGameTypeModal({
                 type="button"
                 onClick={handleStartHost}
                 disabled={!hasGuestJoined || userIsJoining || creating}
-                className={`rounded-md px-6 py-3 text-base font-bold shadow transition focus:outline-none focus:ring-2 focus:ring-amber-300/50 ${
+                className={`rounded-lg px-6 py-3 text-base font-bold shadow transition-all focus:outline-none focus:ring-2 focus:ring-amber-300/50 ${
                   !hasGuestJoined || userIsJoining || creating
                     ? "cursor-not-allowed bg-neutral-700 text-neutral-500"
-                    : "bg-amber-500 text-neutral-900 hover:bg-amber-400"
+                    : "bg-gradient-to-b from-amber-400 to-amber-500 text-neutral-900 shadow-lg shadow-amber-500/20 hover:from-amber-300 hover:to-amber-400 active:scale-[.98]"
                 }`}
               >
                 Start
@@ -391,11 +391,11 @@ function RadioCard({
 }) {
   return (
     <label
-      className={`flex cursor-pointer items-start gap-3 rounded-lg border px-4 py-3 transition ${
+      className={`group relative flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3 transition-all duration-200 ${
         checked
-          ? "border-amber-400 bg-amber-500/10"
-          : "border-neutral-600 bg-neutral-700/40 hover:border-neutral-400"
-      } ${disabled ? "cursor-not-allowed opacity-50" : ""}`}
+          ? "border-amber-400/80 bg-gradient-to-br from-amber-500/15 to-amber-500/[0.04] shadow-[0_0_0_1px_rgba(251,191,36,0.25),0_10px_24px_-14px_rgba(251,191,36,0.55)]"
+          : "border-neutral-700 bg-neutral-800/40 hover:-translate-y-px hover:border-neutral-500 hover:bg-neutral-800/70"
+      } ${disabled ? "cursor-not-allowed opacity-50 hover:translate-y-0" : ""}`}
     >
       <input
         type="radio"
@@ -405,7 +405,13 @@ function RadioCard({
         className="mt-1 h-4 w-4 accent-amber-500"
       />
       <span className="flex-1">
-        <span className="block text-sm font-semibold text-white">{label}</span>
+        <span
+          className={`block text-sm font-semibold transition-colors ${
+            checked ? "text-amber-100" : "text-white"
+          }`}
+        >
+          {label}
+        </span>
         {hint && <span className="block text-xs text-neutral-400">{hint}</span>}
       </span>
     </label>
