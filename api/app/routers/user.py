@@ -8,6 +8,7 @@ from app.models.user import (
     PresenceSeenResponse,
     UserOut,
 )
+from app.routers.social import ONLINE_PRESENCE_WINDOW_MINUTES
 from app.scoring import rating
 from app.security import get_current_user
 
@@ -88,13 +89,29 @@ async def update_seen(
     timestamp set by a fresher submission from another tab. The
     RETURNING clause echoes whichever value won, so the client can
     sync its `activity_synced_at` to the canonical server value.
+
+    The same UPDATE maintains `session_started_at`: if the *previous*
+    `last_seen_at` (the pre-UPDATE row value, which the SET expression
+    still sees) is older than the online window
+    (`ONLINE_PRESENCE_WINDOW_MINUTES`), the user had dropped off the
+    "online" list and is now back, so we treat it as a fresh session and
+    re-stamp the start. Otherwise it's left as-is, so a continuously-
+    present user keeps one session start for the visit. The window is
+    shared with /social/online so the two never drift. See migration
+    0016 for the rationale.
     """
     user_id = str(user["id"])
     try:
         row = await pool.fetchrow(
-            """
+            f"""
             UPDATE users
-            SET    last_seen_at = $1
+            SET    last_seen_at = $1,
+                   session_started_at = CASE
+                       WHEN last_seen_at
+                            < $1 - INTERVAL '{ONLINE_PRESENCE_WINDOW_MINUTES} minutes'
+                           THEN $1
+                       ELSE session_started_at
+                   END
             WHERE  id = $2::uuid
               AND  last_seen_at < $1
             RETURNING last_seen_at

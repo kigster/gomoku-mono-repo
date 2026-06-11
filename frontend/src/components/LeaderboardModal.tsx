@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import ModalShell from "./ModalShell";
+import crownIcon from "../../assets/images/crown-transparent.png";
 
 interface LeaderboardEntry {
   username: string;
@@ -109,7 +110,19 @@ export default function LeaderboardModal({
                   }`}
                 >
                   <td className="px-2 py-2">{i + 1}</td>
-                  <td className="px-2 py-2 font-medium">{entry.username}</td>
+                  <td className="px-2 py-2 font-medium">
+                    <span className="inline-flex items-center gap-2">
+                      <span>{entry.username}</span>
+                      {i === 0 && (
+                        <img
+                          src={crownIcon}
+                          alt="Champion"
+                          title="Current champion"
+                          className="h-[25px] w-[25px] shrink-0 sm:h-[70px] sm:w-[70px]"
+                        />
+                      )}
+                    </span>
+                  </td>
                   <td className="px-2 py-2 text-right tabular-nums font-semibold">
                     {entry.elo_rating}
                   </td>

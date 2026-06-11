@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Board from "./Board";
 import ChatPanel from "./ChatPanel";
+import WhosOnlineModal from "./WhosOnlineModal";
 import SettingsPanel from "./SettingsPanel";
 import SidePanelTabs, { type SidePanelTab } from "./SidePanelTabs";
 import WaitingForOpponent from "./WaitingForOpponent";
@@ -70,6 +71,9 @@ export default function MultiplayerGamePage({
   // flip to 'solo' to inspect the (read-only) AI settings if they want
   // to compare, but the chat is the relevant surface here.
   const [sideTab, setSideTab] = useState<SidePanelTab>("multi");
+  // Who's Online modal, opened from the in-game chat panel's button or
+  // its `/who` command.
+  const [showWhosOnline, setShowWhosOnline] = useState(false);
   // Guest's chosen color for `color_chosen_by='guest'` games. Set via the
   // pick-color screen before the auto-join fires.
   const [guestPickedColor, setGuestPickedColor] = useState<Color | null>(null);
@@ -309,10 +313,20 @@ export default function MultiplayerGamePage({
                       gameCode={code}
                       variant="light"
                       height="fill"
+                      onShowWhosOnline={() => setShowWhosOnline(true)}
                     />
                   }
                 />
               </div>
+
+              {showWhosOnline && (
+                <WhosOnlineModal
+                  apiBase={API_BASE}
+                  authToken={token}
+                  currentUsername={username}
+                  onClose={() => setShowWhosOnline(false)}
+                />
+              )}
 
               {isParticipantView(game) && game.state === "in_progress" && (
                 <div className="hidden lg:block mt-5">

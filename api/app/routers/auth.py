@@ -63,10 +63,11 @@ async def login(body: UserLogin, pool=Depends(get_pool)):
     try:
         await pool.execute(
             """UPDATE users
-               SET last_logged_in_at = now(),
-                   last_seen_at      = now(),
-                   logins_count      = logins_count + 1,
-                   updated_at        = now()
+               SET last_logged_in_at  = now(),
+                   last_seen_at        = now(),
+                   session_started_at  = now(),
+                   logins_count        = logins_count + 1,
+                   updated_at          = now()
                WHERE id = $1::uuid""",
             str(row["id"]),
         )

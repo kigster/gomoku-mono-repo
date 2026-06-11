@@ -39,6 +39,16 @@ async def _read_last_seen(username: str):
         await conn.close()
 
 
+async def _read_session_started_at(username: str):
+    conn = await asyncpg.connect(TEST_DSN)
+    try:
+        return await conn.fetchval(
+            "SELECT session_started_at FROM users WHERE username = $1", username
+        )
+    finally:
+        await conn.close()
+
+
 @pytest.mark.asyncio
 async def test_seen_advances_last_seen_when_incoming_is_newer(client: AsyncClient, auth_headers):
     """Posting a fresh timestamp moves users.last_seen_at forward."""
@@ -82,6 +92,65 @@ async def test_seen_is_no_op_when_incoming_is_stale(client: AsyncClient, auth_he
     assert echoed.replace(microsecond=0) == fresh.replace(microsecond=0)
     stored = await _read_last_seen("testplayer")
     assert stored.replace(microsecond=0) == fresh.replace(microsecond=0)
+
+
+@pytest.mark.asyncio
+async def test_seen_restamps_session_after_gap(client: AsyncClient, auth_headers):
+    """A heartbeat arriving after the user dropped off the online window
+    (>15 min since the previous last_seen) starts a NEW session:
+    session_started_at jumps to the incoming timestamp. This is the
+    re-stamp arm of the CASE in /users/me/seen."""
+    long_ago = datetime.now(UTC) - timedelta(minutes=30)
+    conn = await asyncpg.connect(TEST_DSN)
+    try:
+        await conn.execute(
+            "UPDATE users SET last_seen_at = $1, session_started_at = $1 "
+            "WHERE username = 'testplayer'",
+            long_ago,
+        )
+    finally:
+        await conn.close()
+    fresh = datetime.now(UTC)
+    resp = await client.post(
+        "/users/me/seen",
+        headers=auth_headers,
+        json={"last_seen_at": fresh.isoformat()},
+    )
+    assert resp.status_code == 200, resp.text
+    session = await _read_session_started_at("testplayer")
+    assert session is not None
+    assert session.replace(microsecond=0) == fresh.replace(microsecond=0)
+
+
+@pytest.mark.asyncio
+async def test_seen_holds_session_within_window(client: AsyncClient, auth_headers):
+    """A heartbeat from a continuously-present user (previous last_seen
+    within the 15-min window) advances last_seen_at but leaves
+    session_started_at untouched — one session start per visit. This is
+    the ELSE arm of the CASE, and the exact bug the design guards against
+    (a throttled background-tab timer must not reset the session)."""
+    recent = datetime.now(UTC) - timedelta(minutes=2)
+    session_start = datetime.now(UTC) - timedelta(minutes=7)
+    conn = await asyncpg.connect(TEST_DSN)
+    try:
+        await conn.execute(
+            "UPDATE users SET last_seen_at = $1, session_started_at = $2 "
+            "WHERE username = 'testplayer'",
+            recent,
+            session_start,
+        )
+    finally:
+        await conn.close()
+    fresh = datetime.now(UTC) + timedelta(seconds=5)
+    resp = await client.post(
+        "/users/me/seen",
+        headers=auth_headers,
+        json={"last_seen_at": fresh.isoformat()},
+    )
+    assert resp.status_code == 200, resp.text
+    session = await _read_session_started_at("testplayer")
+    assert session is not None
+    assert session.replace(microsecond=0) == session_start.replace(microsecond=0)
 
 
 @pytest.mark.asyncio

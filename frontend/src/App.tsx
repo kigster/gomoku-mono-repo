@@ -26,6 +26,7 @@ import JsonDebugModal from "./components/JsonDebugModal";
 import RulesModal from "./components/RulesModal";
 import AboutModal from "./components/AboutModal";
 import LeaderboardModal from "./components/LeaderboardModal";
+import WhosOnlineModal from "./components/WhosOnlineModal";
 import DifficultySettingsModal from "./components/DifficultySettingsModal";
 import AmbientBackground from "./components/AmbientBackground";
 import MultiplayerGamePage from "./components/MultiplayerGamePage";
@@ -317,6 +318,7 @@ export default function App() {
     useState(false);
   const [showAboutModal, setShowAboutModal] = useState(false);
   const [showLeaderboardModal, setShowLeaderboardModal] = useState(false);
+  const [showWhosOnlineModal, setShowWhosOnlineModal] = useState(false);
   const [showNavMenu, setShowNavMenu] = useState(false);
   // Show "Choose Game Type" once per login session; reset whenever the auth
   // token transitions from absent → present, dismissed permanently after
@@ -598,6 +600,19 @@ export default function App() {
                         >
                           Worldwide Leaderboard
                         </button>
+                        <button
+                          onClick={() => {
+                            setShowNavMenu(false);
+                            trackModalOpen("whos_online");
+                            setShowWhosOnlineModal(true);
+                            window.scrollTo(0, 0);
+                          }}
+                          className="w-full px-4 py-3 text-left
+                                     text-neutral-300 hover:text-white hover:bg-neutral-700
+                                     transition-colors cursor-pointer text-[1.05rem] font-semibold"
+                        >
+                          Who's Online
+                        </button>
                         <hr className="my-1 border-neutral-700" />
                         <JsonDebugModal
                           className="w-full px-4 py-3 text-left
@@ -688,6 +703,10 @@ export default function App() {
                               authToken={authToken}
                               apiBase={API_BASE}
                               onActiveGameTerminated={handleAbort}
+                              onShowWhosOnline={() => {
+                                trackModalOpen("whos_online");
+                                setShowWhosOnlineModal(true);
+                              }}
                             />
                           ) : (
                             <p className="text-center text-sm text-neutral-500 py-6">
@@ -951,6 +970,17 @@ export default function App() {
               onClose={() => {
                 trackModalClose("leaderboard");
                 setShowLeaderboardModal(false);
+              }}
+            />
+          )}
+          {showWhosOnlineModal && authToken && playerName && (
+            <WhosOnlineModal
+              apiBase={API_BASE}
+              authToken={authToken}
+              currentUsername={playerName}
+              onClose={() => {
+                trackModalClose("whos_online");
+                setShowWhosOnlineModal(false);
               }}
             />
           )}
