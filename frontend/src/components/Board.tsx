@@ -1,6 +1,11 @@
 import { useCallback, useMemo } from "react";
 import type { CellValue, DisplayMode } from "../types";
-import { STAR_POINTS_19, STAR_POINTS_15, BOARD_PX } from "../constants";
+import {
+  STAR_POINTS_19,
+  STAR_POINTS_15,
+  BOARD_PX,
+  PADDING,
+} from "../constants";
 import stoneBlack from "../../assets/images/stone-black.png";
 import stoneWhite from "../../assets/images/stone-white.png";
 
@@ -12,8 +17,6 @@ interface BoardProps {
   lastMove: [number, number] | null;
   onCellClick: (row: number, col: number) => void;
 }
-
-const PADDING = 24;
 
 export default function Board({
   board,
