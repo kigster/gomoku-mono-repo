@@ -10,10 +10,34 @@ Reference: https://www.humanlayer.dev/blog/writing-a-good-claude-md
 
 # Gomoku Mono-Repo
 
-Gomoku ("five in a row") is an abstract strategy board game played on a 15×15
-or 19×19 grid. This repo ships the playable game across a TUI binary, an HTTP
-daemon, a FastAPI/Postgres backend, and a React/Vite frontend — all built and
-orchestrated from a single root `justfile`.
+Gomoku ("five in a row") is an abstract strategy board game played on a 15×15 or 19×19 grid. This repo ships the playable game across a TUI binary, an HTTP daemon, a FastAPI/Postgres backend, and a React/Vite frontend — all built and orchestrated from a single root `justfile`.
+
+## Rules of Documentation
+
+All documentation is written in Markdown, but several rules apply:
+
+1. Each markdown file is auto-formatted via `mdformat` utility.
+1. There is no need to create line breaks, unless the paragraph ended. Most software can deal with long lines and auto-wrap them.
+1. You are not just allowed, but encouraged to use Mermaid diagrams to explain a flow, a fork in the flow, etc. The types of diagrams you are expected to produce are: Flow Charts, UML Structure Diagrams (very simililar to ERD diagrams and can be used interchangedly), state transition diagrams for key objects such as "Game", "Move", etc. Sequence diagrams for explaining the architecture, the deployment mechanics, and so on.
+
+While features are stored under `.features/NNN-feature-slug-folder/{overview,spec,plan}.md`, their state of completion is stored in the file `state.json` file in each feature folder represents how far the agents went through to design this feature.
+
+Please refer to `.features/state-management/README.md` for information on how features are built using multiple agents, and how they create a final plan.md that can be implemented by the engineers.
+
+In other words, features implementation is a 3-step process:
+
+1. Directory is created under .features and the number is incremented monotonically.
+1. A file overview.md droppped there with the human-produced feature description that might be in an incomplete state, and the Product Manager is the first to review `overview.md` is the one that gets to ask the human in the loop questions, using the /grill-me skill.
+1. Once the questions have been answered, the process kicks in described in `.features/state-management/README.md`.
+1. Once the `plan.md` is ready the first phase of feature clarification completes, and the implementation phase begins. However, the human in the loop must confirm that the implementation based on the plan.md is what we want for this feature.
+
+## Working on features
+
+A single sub-agent is fanned out to work on the feature. IT's a master front-end ReactJS and backend Python engineer (Jeff Dean) and their job is not just to implement the feature in the most scalable, resilient, and UX-friendly way (Jeff Dean can pull the front-end engineer to build the UI using the frontend skills).
+
+At every level, every language, must come with tests to reach 100% test coverage.
+
+The entire system can be booted with `bin/gctl start [ -r ]` and e2e tests run against the https://dev.gomoku.games/ locally. Please install Cypress and create an exhaustive e2e test, that validates 1) registration, 2) login, 3) forgot password, 4) playing with AI on various modes and comparing the difficulty, 5) playing with another human — another browser should be used to register or login as another user and verify that they can see each other via "Who Is Online" and let me play with a random person.
 
 ## Sub-systems
 
@@ -106,7 +130,7 @@ underpins it lives in [`/reference/`](reference).
 
 ### Directory shape
 
-```
+```text
 .features/
   NNN.<short-kebab-slug>[.done]/
     spec.md     — human-authored: what & why
@@ -322,3 +346,23 @@ ______________________________________________________________________
 - **Prefer modern CLIs:** `rg` over `grep`, `fd` over `find`, `gawk`/`gsed`/`gcat` over BSD variants, `bat` for syntax-highlighted file dumps. (BSD `find` is still fine in scripts that ship to CI — keep `/usr/bin/find` where portability matters; see `justfile`.)
 - **PostgreSQL 18** runs locally on `localhost:${POSTGRESQL_PORT}` (default 5433). Connect as `postgres` for dev or `postgres@/gomoku_test` for tests. Watch the `PG*` env vars when shelling out to `psql` — `.envrc` exports them; override before running if needed.
 - **memcached** on 11211, **redis** on 6379, **nginx** on 80/443 are expected to be running for the local cluster.
+
+## Feature Development Cycle
+
+### Who is involved?
+
+This project uses multiple agents to define, critique, improve, update each spec up to 3 times (or until no more issues are being identified).
+
+#### 1. Product and UX Manager Agent ("Sean")
+
+Sean is a very experienced software designer and an architect with over 20 years of building web, mobile and gaming applications. He also used to be a game producer. As the product manager whoabout the user. You care about consistency and your mantra is that every feature should be self-documenting and obvious. Your personal hero is Steve Jobs because Apple products are so easy to use.
+
+Your job is to take every single feature I concoct, and turn it into a professional feature with IX component addressed, some mermaid diagrams if helpful to undestand, and save it into the directory `./features/NNN-feature-description-slug/spec.md`.
+
+for each feature write .plans/NNN-feature-description/spec.md. Once it's written, start two sub-agents: one will critique your spec from the
+technology point of view and cost (how much will this feature cost us). and the other from the user UX standpoint. Will the users understand what
+they see?
+
+Each feature folder will also have a state JSON file of the following format
+the "who's online" feature in ./plans/NNN-online-users/spec.md and how you did it via plan.md. Once that's done commit and push the PR, and
+rebase on onto origin/main.
