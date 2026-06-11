@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 import asyncpg
 import pytest
 from httpx import AsyncClient
@@ -99,6 +101,41 @@ async def test_login_success(client: AsyncClient):
     data = resp.json()
     assert data["username"] == "logintest"
     assert "access_token" in data
+
+
+@pytest.mark.asyncio
+async def test_login_stamps_session_started_at(client: AsyncClient):
+    """A successful login (re)stamps session_started_at to now, so the
+    Who's Online "Since" column reflects the fresh session rather than a
+    day-old heartbeat or the signup default."""
+    await client.post(
+        "/auth/signup",
+        json={"username": "sessionstamp", "password": "pass1234"},
+    )
+    long_ago = datetime.now(UTC) - timedelta(days=1)
+    conn = await asyncpg.connect(TEST_DSN)
+    try:
+        await conn.execute(
+            "UPDATE users SET session_started_at = $1 WHERE username = 'sessionstamp'",
+            long_ago,
+        )
+    finally:
+        await conn.close()
+    resp = await client.post(
+        "/auth/login",
+        json={"username": "sessionstamp", "password": "pass1234"},
+    )
+    assert resp.status_code == 200, resp.text
+    conn = await asyncpg.connect(TEST_DSN)
+    try:
+        session = await conn.fetchval(
+            "SELECT session_started_at FROM users WHERE username = 'sessionstamp'"
+        )
+    finally:
+        await conn.close()
+    assert session is not None
+    # Jumped forward to ~now, not the backdated day-old value.
+    assert (datetime.now(UTC) - session).total_seconds() < 60
 
 
 @pytest.mark.asyncio

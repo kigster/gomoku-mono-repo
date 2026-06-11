@@ -474,3 +474,50 @@ async def test_online_marks_single_champion(
     me_row = next(u for u in body["users"] if u["username"] == "testplayer")
     assert bob_row["is_champion"] is True
     assert me_row["is_champion"] is False
+
+
+@pytest.mark.asyncio
+async def test_online_champion_tiebreak_on_games_count(
+    client: AsyncClient, auth_headers, second_registered_user
+):
+    """When two ranked players share the top Elo, exactly one is crowned.
+    The tie breaks on `elo_games_count DESC` (then `created_at ASC`), so
+    the higher-volume player wins. Guards the "at most one crown per
+    page" promise on the equal-Elo path the single-champion test skips."""
+    bob = second_registered_user["username"]
+    conn = await asyncpg.connect(TEST_DSN)
+    try:
+        await conn.execute(
+            "UPDATE users SET elo_rating = 1800, elo_games_count = 5 WHERE username = $1",
+            bob,
+        )
+        await conn.execute(
+            "UPDATE users SET elo_rating = 1800, elo_games_count = 3 "
+            "WHERE username = 'testplayer'"
+        )
+    finally:
+        await conn.close()
+    body = (await client.get("/social/online", headers=auth_headers)).json()
+    champions = [u["username"] for u in body["users"] if u["is_champion"]]
+    assert champions == [bob], champions
+
+
+@pytest.mark.asyncio
+async def test_online_unranked_high_elo_not_champion(
+    client: AsyncClient, auth_headers, second_registered_user
+):
+    """A user with a high Elo but zero ranked games is NOT champion —
+    the CTE requires `elo_games_count > 0`. With nobody qualifying, no
+    row carries the crown."""
+    bob = second_registered_user["username"]
+    conn = await asyncpg.connect(TEST_DSN)
+    try:
+        await conn.execute(
+            "UPDATE users SET elo_rating = 3000, elo_games_count = 0 WHERE username = $1",
+            bob,
+        )
+    finally:
+        await conn.close()
+    body = (await client.get("/social/online", headers=auth_headers)).json()
+    champions = [u["username"] for u in body["users"] if u["is_champion"]]
+    assert champions == [], champions
