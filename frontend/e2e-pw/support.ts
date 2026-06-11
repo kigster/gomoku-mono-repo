@@ -1,5 +1,6 @@
 import { Browser, BrowserContext, Page, APIRequestContext, expect } from "@playwright/test";
 import { Pool } from "pg";
+import { BOARD_PX, PADDING } from "../src/constants";
 
 // ---------------------------------------------------------------------------
 // Shared helpers for the Playwright two-human e2e suite.
@@ -18,9 +19,10 @@ export const DB_URL =
 const TOKEN_KEY = "gomoku_auth_token";
 const USER_KEY = "gomoku_username";
 
-// Board geometry — must mirror constants.ts BOARD_PX and Board.tsx PADDING.
-export const BOARD_PX = 600;
-export const PADDING = 24;
+// Board geometry is imported from the app's single source of truth
+// (src/constants.ts) so the click math can never drift from what the board
+// actually renders. Re-exported for any spec that needs the raw values.
+export { BOARD_PX, PADDING };
 
 export interface TestUser {
   username: string;

@@ -338,7 +338,7 @@ export default function MultiplayerGamePage({
             <div className="flex flex-col items-center w-full lg:w-auto gap-4">
               <PlayerHeader game={game as MultiplayerGameView} />
               {isParticipantView(game) && game.state === "in_progress" && (
-                <p className="text-neutral-300 -mt-2">
+                <p className="text-neutral-300 -mt-2" data-testid="turn-status">
                   {game.your_turn ? "Your move." : "Waiting for opponent…"}
                 </p>
               )}
