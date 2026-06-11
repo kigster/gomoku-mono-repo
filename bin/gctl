@@ -823,7 +823,7 @@ cmd_start() {
     esac
   done
 
-  echo ${GOMOKU_ENGINE} > ${LAST_HTTPD_TYPE}}
+  echo ${GOMOKU_ENGINE} > ${LAST_HTTPD_TYPE}
 
   [[ -z "$workers" ]] && workers=${DEFAULT_WORKERS}
 
