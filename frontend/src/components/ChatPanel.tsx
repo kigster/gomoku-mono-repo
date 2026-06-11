@@ -882,9 +882,7 @@ function Message({
   // Speaker name is rendered as a small dark chip with amber text per
   // the in-game design feedback — even when the transcript background
   // is light grey, the username reads against a dark band in the
-  // signature colour. Message bubble font is bumped one Tailwind step
-  // (`text-sm` → `text-base`) for the in-game variant, which is roughly
-  // the +30% size increase the feedback asked for.
+  // signature colour.
   const isMe = m.me;
   const speakerChip = isLight
     ? "bg-neutral-900 text-amber-400"
@@ -898,11 +896,12 @@ function Message({
   const shadow = isLight
     ? "shadow-sm shadow-black/30"
     : "shadow-sm shadow-black/40";
-  // Chat message text: Barlow Condensed SemiBold at 10px (loaded from
-  // Google Fonts in index.html). The Tailwind arbitrary family
-  // `font-['Barlow_Condensed']` emits `font-family: Barlow Condensed`.
+  // Chat message text uses Barlow Condensed (loaded from Google Fonts in
+  // index.html). The Tailwind arbitrary family `font-['Barlow_Condensed']`
+  // emits `font-family: Barlow Condensed`; the condensed face keeps the
+  // bubbles compact while staying comfortably readable.
   const bubbleText =
-    "font-['Barlow_Condensed'] font-semibold text-[10px] leading-snug";
+    "font-['Barlow_Condensed'] font-semibold text-[15px] leading-snug";
   return (
     <div
       className={[
