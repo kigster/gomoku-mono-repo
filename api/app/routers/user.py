@@ -88,13 +88,26 @@ async def update_seen(
     timestamp set by a fresher submission from another tab. The
     RETURNING clause echoes whichever value won, so the client can
     sync its `activity_synced_at` to the canonical server value.
+
+    The same UPDATE maintains `session_started_at`: if the *previous*
+    `last_seen_at` (the pre-UPDATE row value, which the SET expression
+    still sees) is older than the 15-minute online window, the user had
+    dropped off the "online" list and is now back, so we treat it as a
+    fresh session and re-stamp the start. Otherwise it's left as-is, so
+    a continuously-present user keeps one session start for the visit.
+    See migration 0016 for the rationale.
     """
     user_id = str(user["id"])
     try:
         row = await pool.fetchrow(
             """
             UPDATE users
-            SET    last_seen_at = $1
+            SET    last_seen_at = $1,
+                   session_started_at = CASE
+                       WHEN last_seen_at < $1 - INTERVAL '15 minutes'
+                           THEN $1
+                       ELSE session_started_at
+                   END
             WHERE  id = $2::uuid
               AND  last_seen_at < $1
             RETURNING last_seen_at
