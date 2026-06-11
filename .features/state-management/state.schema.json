@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gomoku.games/schemas/feature-state.schema.json",
+  "title": "Gomoku Feature State",
+  "description": "Tracks the lifecycle of a single feature folder under .features/NNN.<slug>/. The file is self-sufficient for an orchestrating AI agent: each stage embeds the full sub-agent definitions (names, personalities, responsibilities), the interaction protocol between them, and machine-readable exit criteria that say when the stage is done and what global state to advance to. The file is created automatically with global state 'initial' and advances through spec → plan → implement → done (and possibly reopened).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["feature", "state", "created_at", "updated_at", "stages"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional pointer back to this schema for editor validation."
+    },
+    "feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "slug", "title", "directory"],
+      "properties": {
+        "number": {
+          "type": "string",
+          "pattern": "^[0-9]{3}$",
+          "description": "Zero-padded three-digit feature sequence number. Never changes."
+        },
+        "slug": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+          "description": "Short kebab-case feature name agreed on by human and AI before the folder was created."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable feature name, e.g. 'Implement Authentication and Authorization'."
+        },
+        "directory": {
+          "type": "string",
+          "pattern": "^\\.features/[0-9]{3}\\.[a-z0-9]+(-[a-z0-9]+)*(\\.done)?/?$",
+          "description": "Repo-relative path of the feature folder containing overview.md, spec.md, plan.md, and this state.json."
+        }
+      }
+    },
+    "state": {
+      "description": "Global lifecycle state of the feature. 'initial' is set when the file is auto-created; it becomes 'spec' the moment the agents start discussing a non-blank spec.md.",
+      "enum": ["initial", "spec", "plan", "implement", "done", "reopened"]
+    },
+    "created_at": { "$ref": "#/$defs/timestamp" },
+    "updated_at": { "$ref": "#/$defs/timestamp" },
+    "history": {
+      "type": "array",
+      "description": "Append-only log of global state transitions.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["from", "to", "at"],
+        "properties": {
+          "from": { "enum": ["initial", "spec", "plan", "implement", "done", "reopened"] },
+          "to": { "enum": ["spec", "plan", "implement", "done", "reopened"] },
+          "at": { "$ref": "#/$defs/timestamp" },
+          "by": {
+            "type": "string",
+            "description": "Agent or human who triggered the transition."
+          },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "stages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["spec", "plan", "implement"],
+      "description": "Per-stage tracking hashes. Each stage is self-describing: it defines the sub-agents to spawn (with personalities), the protocol governing their interaction, the running counters/handovers, and the exit criteria that advance the global state.",
+      "properties": {
+        "spec": {
+          "allOf": [{ "$ref": "#/$defs/stage" }],
+          "description": "spec.md authoring loop: the Product Manager (Wiggins) drafts, the UX Designer (Cartman) critiques/updates, then the Senior Frontend Engineer (Kyle) signs off with a complexity estimate in points (1 pt ≈ 2 h, 2 pt ≈ 2/3 day, 3 pt ≈ 1 day; additive — 15 pt ≈ one engineer-week)."
+        },
+        "plan": {
+          "allOf": [{ "$ref": "#/$defs/stage" }],
+          "description": "plan.md debate: Wiggins + Jeff Dean (scaling, cost, PostgreSQL 18, UUID PKs, FK/check constraints) + Kiggie (end-to-end proposal, modern React/tooling). Sub-state moves 'planning_in_progress' → 'ready_for_implementation'."
+        },
+        "implement": {
+          "allOf": [{ "$ref": "#/$defs/stage" }],
+          "description": "Implementation team: Jeff Dean (lead, backend/database), Kiggie (frontend), and Bryce (full-stack DevOps; Terraform + Terragrunt)."
+        },
+        "done": { "$ref": "#/$defs/stage" },
+        "reopened": { "$ref": "#/$defs/stage" }
+      }
+    }
+  },
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp with timezone."
+    },
+    "nullableTimestamp": {
+      "oneOf": [{ "$ref": "#/$defs/timestamp" }, { "type": "null" }]
+    },
+    "agentId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
+      "description": "Kebab-case agent identifier, e.g. 'wiggins', 'cartman', 'kyle', 'jeff-dean', 'kiggie', 'bryce'."
+    },
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "current_agent", "agents", "protocol", "counters"],
+      "properties": {
+        "status": {
+          "enum": ["not_started", "in_progress", "agreed", "complete"],
+          "description": "'agreed' = all participating agents are satisfied and the markdown artifact has been written; 'complete' = the global state has moved past this stage."
+        },
+        "sub_state": {
+          "oneOf": [{ "type": "string" }, { "type": "null" }],
+          "description": "Optional finer-grained label, e.g. 'planning_in_progress' or 'ready_for_implementation' on the plan stage."
+        },
+        "started_at": { "$ref": "#/$defs/nullableTimestamp" },
+        "completed_at": { "$ref": "#/$defs/nullableTimestamp" },
+        "current_agent": {
+          "oneOf": [{ "$ref": "#/$defs/agentId" }, { "type": "null" }],
+          "description": "Agent currently holding the pen; null when the stage is not active."
+        },
+        "agents": {
+          "type": "object",
+          "description": "Roster of sub-agents for this stage, keyed by agent id. Each entry is a complete definition — name, personality, responsibilities — sufficient for the orchestrating agent to spawn the sub-agent, plus its runtime participation state.",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/$defs/agentId" },
+          "additionalProperties": { "$ref": "#/$defs/agent" }
+        },
+        "protocol": { "$ref": "#/$defs/protocol" },
+        "counters": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["criticisms", "revisions", "handovers"],
+          "description": "How many times the artifact has been criticized, updated, and handed over during this stage.",
+          "properties": {
+            "criticisms": { "type": "integer", "minimum": 0 },
+            "revisions": { "type": "integer", "minimum": 0 },
+            "handovers": { "type": "integer", "minimum": 0 },
+            "discussion_rounds": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "handovers": {
+          "type": "array",
+          "description": "Chronological hand-over chain between agents within this stage.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["from", "to", "at"],
+            "properties": {
+              "from": { "$ref": "#/$defs/agentId" },
+              "to": { "$ref": "#/$defs/agentId" },
+              "at": { "$ref": "#/$defs/timestamp" },
+              "note": { "type": "string" }
+            }
+          }
+        },
+        "artifacts": {
+          "type": "array",
+          "description": "Markdown files this stage produces or mutates, relative to the feature folder.",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "complexity_points": {
+          "oneOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }],
+          "description": "Senior Frontend Engineer's additive point estimate recorded at spec sign-off (1 pt ≈ 2 h, 2 pt ≈ 2/3 day, 3 pt ≈ 1 day)."
+        }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "role", "personality", "responsibilities", "satisfied"],
+      "description": "A complete sub-agent definition plus its runtime participation state. The definition fields (name, role, personality, responsibilities, expertise, authority) double as the spawn prompt for the orchestrating agent.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The agent's name as used in conversation, e.g. 'Wiggins', 'Cartman', 'Kyle', 'Jeff Dean', 'Kiggie', 'Bryce'."
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Job title, e.g. 'Product Manager', 'UX Designer', 'Senior Frontend Engineer'."
+        },
+        "personality": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Character sketch used as the sub-agent's system prompt: background, temperament, heroes, biases, catchphrases."
+        },
+        "responsibilities": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Concrete duties this agent owns during the stage."
+        },
+        "expertise": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Domains the agent is authoritative on, e.g. 'PostgreSQL 18', 'JWT', 'React 19'."
+        },
+        "authority": {
+          "enum": ["final_arbiter", "contributor", "sign_off"],
+          "default": "contributor",
+          "description": "'final_arbiter' resolves all disagreements (Product Manager); 'sign_off' must approve before the stage can exit (e.g. the Frontend Engineer's complexity/security sign-off)."
+        },
+        "satisfied": {
+          "type": "boolean",
+          "description": "Runtime: true once the agent has declared 'I am satisfied with this specification/plan'."
+        },
+        "sign_off_at": { "$ref": "#/$defs/nullableTimestamp" },
+        "criticisms": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Runtime: criticisms raised by this specific agent."
+        },
+        "revisions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Runtime: direct edits this agent made to the artifact."
+        }
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entry_agent", "interaction", "exit_criteria"],
+      "description": "Machine-readable description of how the stage's agents interact and when the stage is finished.",
+      "properties": {
+        "entry_agent": {
+          "$ref": "#/$defs/agentId",
+          "description": "Agent that opens the stage (e.g. the Product Manager writes the first draft)."
+        },
+        "interaction": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Ordered rules of engagement the orchestrating agent enforces, e.g. 'PM and UX Designer iterate until each says: I am satisfied with this specification, let's bring in the Frontend Engineer.'"
+        },
+        "satisfaction_phrase": {
+          "type": "string",
+          "description": "The exact phrase an agent must utter to flip its 'satisfied' flag."
+        },
+        "max_rounds": {
+          "oneOf": [{ "type": "integer", "minimum": 1 }, { "type": "null" }],
+          "description": "Optional safety valve: maximum back-and-forth rounds before the final arbiter decides unilaterally."
+        },
+        "exit_criteria": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["all_agents_satisfied", "artifacts_written", "advance_global_state_to"],
+          "description": "When ALL of these hold, the stage status becomes 'agreed' and the global state advances.",
+          "properties": {
+            "all_agents_satisfied": {
+              "type": "boolean",
+              "const": true,
+              "description": "Every agent in the roster has satisfied=true."
+            },
+            "artifacts_written": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string" },
+              "description": "Files that must exist and be non-blank in the feature folder, e.g. ['spec.md']."
+            },
+            "required_sign_offs": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/agentId" },
+              "description": "Agents whose explicit sign-off (sign_off_at set) is mandatory, e.g. the Frontend Engineer's complexity estimate."
+            },
+            "set_sub_state": {
+              "oneOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Sub-state to write on exit, e.g. 'ready_for_implementation' — the point at which the feature is considered ready to implement."
+            },
+            "advance_global_state_to": {
+              "enum": ["spec", "plan", "implement", "done", "reopened"],
+              "description": "Global state the feature moves to once the criteria are met."
+            }
+          }
+        }
+      }
+    }
+  }
+}
