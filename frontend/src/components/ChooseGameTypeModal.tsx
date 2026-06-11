@@ -167,7 +167,10 @@ export default function ChooseGameTypeModal({
           try {
             await apiCancelGame(authToken, created.code);
           } catch {
-            // Lazy-expire path covers it eventually.
+            // Best-effort cleanup. If it fails, the orphaned row lingers as a
+            // dead `waiting` game until its 15-min TTL — there is no background
+            // sweeper, but the join path refuses any code past expires_at, so
+            // the stale row is never playable.
           }
           return;
         }
