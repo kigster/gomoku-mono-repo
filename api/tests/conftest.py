@@ -24,8 +24,9 @@ os.environ["ENVIRONMENT"] = "ci" if os.environ.get("CI") else "test"
 # can set EMAIL_PROVIDER=sendgrid + SENDGRID_API_KEY for local password-
 # reset testing. Pydantic reads process env, so without this scrub the
 # tests would actually POST to SendGrid (and fail with 401 against a
-# revoked dev key). Force stdout mode regardless of shell state.
-os.environ["EMAIL_PROVIDER"] = "stdout"
+# revoked dev key). Force the in-memory provider regardless of shell state;
+# assertions read app.services.memory.OUTBOX (cleared per-test in a fixture).
+os.environ["EMAIL_PROVIDER"] = "memory"
 os.environ.pop("SENDGRID_API_KEY", None)
 
 # DSN isolation — same risk: if the repo-root .env carries a dev-convenience
@@ -169,6 +170,21 @@ async def _close_app_resources():
             await admin.execute(f'DROP DATABASE IF EXISTS "{_test_db}" WITH (FORCE)')
         finally:
             await admin.close()
+
+
+@pytest.fixture(autouse=True)
+def clear_outbox():
+    """Reset the in-memory email outbox before each test.
+
+    The ``memory`` provider (forced for tests above) accumulates every sent
+    message in ``app.services.memory.OUTBOX``; clearing keeps per-test
+    assertions independent.
+    """
+    from app.services.memory import OUTBOX
+
+    OUTBOX.clear()
+    yield
+    OUTBOX.clear()
 
 
 @pytest.fixture

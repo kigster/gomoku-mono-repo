@@ -1,6 +1,6 @@
 [package]
 name = "gomoku-httpd-rust"
-version = "1.0.1"
+version = "3.1.0"
 edition = "2024"
 description = "Gomoku AI HTTP Server - Rust port of gomoku-httpd"
 authors = ["Konstantin Gredeskoul"]

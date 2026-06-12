@@ -14,7 +14,7 @@ from app.models.user import (
     UserLogin,
 )
 from app.security import create_token, hash_password, verify_password
-from app.services.email import send_password_reset_email
+from app.services.email_password_reset import send_password_reset_email
 
 logger = get_logger("gomoku.auth")
 
