@@ -61,6 +61,8 @@ jwt_var="${upper_env}_JWT_SECRET"
 domain_var="${upper_env}_CUSTOM_DOMAIN"
 honey_var="${upper_env}_HONEYCOMB_INGEST_API_KEY"
 sendgrid_var="${upper_env}_SENDGRID_API_KEY"
+resend_var="${upper_env}_RESEND_API_KEY"
+provider_var="${upper_env}_EMAIL_PROVIDER"
 
 DATABASE_URL_VAL="${!db_var:-}"
 JWT_SECRET_VAL="${!jwt_var:-}"
@@ -74,7 +76,13 @@ HONEYCOMB_KEY_VAL="${!honey_var:-${HONEYCOMB_INGEST_API_KEY:-}}"
 # SendGrid key is optional (falls back to unprefixed SENDGRID_API_KEY so a
 # single key powers prod + staging if you want).
 SENDGRID_KEY_VAL="${!sendgrid_var:-${SENDGRID_API_KEY:-}}"
-EMAIL_PROVIDER_VAL="${EMAIL_PROVIDER:-stdout}"
+RESEND_KEY_VAL="${!resend_var:-${RESEND_API_KEY:-}}"
+# Provider: per-env (PRODUCTION_EMAIL_PROVIDER / STAGING_EMAIL_PROVIDER) wins,
+# then unprefixed EMAIL_PROVIDER, else default to sendgrid — deploys only ever
+# target staging/production, which always want real delivery. The PRODUCTION_-
+# prefix lets the repo-root .env carry this without direnv flipping the *local*
+# dev provider (which defaults to localsmtp in app/config.py).
+EMAIL_PROVIDER_VAL="${!provider_var:-${EMAIL_PROVIDER:-sendgrid}}"
 EMAIL_FROM_VAL="${EMAIL_FROM:-}"
 EMAIL_FROM_NAME_VAL="${EMAIL_FROM_NAME:-}"
 
@@ -104,6 +112,7 @@ export TF_VAR_email_provider="${EMAIL_PROVIDER_VAL}"
 export TF_VAR_email_from="${EMAIL_FROM_VAL}"
 export TF_VAR_email_from_name="${EMAIL_FROM_NAME_VAL}"
 export TF_VAR_sendgrid_api_key="${SENDGRID_KEY_VAL}"
+export TF_VAR_resend_api_key="${RESEND_KEY_VAL}"
 export PROJECT_ID
 export REGION="${REGION:-us-central1}"
 export ENVIRONMENT
