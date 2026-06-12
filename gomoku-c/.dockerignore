@@ -1,0 +1,34 @@
+# Build context trimming for the C engine image.
+#
+# `make clean` (run as the first build step) wipes bin/, tests/googletest,
+# and every *.a anyway, and `tests/tests-setup` re-clones googletest from
+# scratch — so none of those local artifacts belong in the context. Keep
+# src/, Makefile, and tests/ (sans googletest); the build runs `make all &&
+# make test`, which proves the remaining context is sufficient.
+
+# VCS
+.git
+.gitignore
+
+# Prebuilt local binaries (make clean deletes bin/ on the first build step)
+bin/
+
+# Compiled objects / static libs (rebuilt from source)
+*.o
+*.a
+*.exe
+
+# Vendored json-c build output (rebuilt by `make json-c`)
+src/vendor/json-c/build/
+
+# GoogleTest is re-cloned by tests/tests-setup at build time
+tests/googletest/
+
+# Cruft
+.DS_Store
+**/.DS_Store
+
+# Not needed to build or test the engine
+research/
+games/
+GOMOCUP-README.txt
