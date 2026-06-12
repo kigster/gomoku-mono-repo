@@ -3,6 +3,11 @@ output "httpd_url" {
   value       = google_cloud_run_v2_service.httpd.uri
 }
 
+output "httpd_rust_urls" {
+  description = "Map of vCPU tier → gomoku-httpd-rust premium service URL (internal)"
+  value       = { for k, s in google_cloud_run_v2_service.httpd_rust : k => s.uri }
+}
+
 output "api_url" {
   description = "The URL of the gomoku-api Cloud Run service (public)"
   value       = google_cloud_run_v2_service.api.uri

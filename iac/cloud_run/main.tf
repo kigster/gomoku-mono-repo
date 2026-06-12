@@ -29,9 +29,10 @@ provider "google" {
 # (e.g. `gomoku-api-staging`) so multiple environments can coexist in the
 # same project without name collision.
 locals {
-  name_suffix = var.environment == "production" ? "" : "-${var.environment}"
-  api_name    = "gomoku-api${local.name_suffix}"
-  httpd_name  = "gomoku-httpd${local.name_suffix}"
+  name_suffix     = var.environment == "production" ? "" : "-${var.environment}"
+  api_name        = "gomoku-api${local.name_suffix}"
+  httpd_name      = "gomoku-httpd${local.name_suffix}"
+  httpd_rust_name = "gomoku-httpd-rust${local.name_suffix}"
 }
 
 # Enable APIs
@@ -111,6 +112,89 @@ resource "google_cloud_run_v2_service" "httpd" {
     }
 
     # Single-threaded: one request at a time per instance
+    max_instance_request_concurrency = 1
+  }
+
+  traffic {
+    type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
+    percent = 100
+  }
+
+  depends_on = [google_project_service.run_api]
+}
+
+# ──────────────────────────────────────────────
+# gomoku-httpd-rust — Rust engine, PREMIUM tiers
+# ──────────────────────────────────────────────
+# One scale-to-zero service per vCPU tier (var.rust_tiers). The FastAPI
+# router picks a tier per game from a *verified entitlement token* and routes
+# there; unentitled games stay on the 1-vCPU C engine above. Same IAM-only
+# access as httpd (no allUsers invoker — see api_invokes_httpd_rust), so the
+# public Cloud Run URL can't be played directly. Scale-to-zero + request-based
+# billing means a tier costs nothing until a paid game lands on it.
+resource "google_cloud_run_v2_service" "httpd_rust" {
+  for_each = var.rust_tiers
+
+  name     = "${local.httpd_rust_name}-${each.key}vcpu"
+  location = var.region
+  ingress  = "INGRESS_TRAFFIC_ALL"
+
+  template {
+    scaling {
+      min_instance_count = 0
+      max_instance_count = var.rust_max_instances
+    }
+
+    containers {
+      image = var.rust_httpd_image
+
+      ports {
+        container_port = 8787
+      }
+
+      # Slim image copies the binary to /app/bin/gomoku-httpd (WORKDIR /app);
+      # same invocation contract as the C engine.
+      command = ["./bin/gomoku-httpd"]
+      args    = ["-b", "0.0.0.0:8787", "-L", "info"]
+
+      # OTLP → Honeycomb. telemetry.rs reads HONEYCOMB_INGEST_API_KEY (and the
+      # env-prefixed variants) plus HONEYCOMB_DATASET directly, and defaults
+      # the endpoint to https://api.honeycomb.io/v1/traces. An unset key
+      # silently disables telemetry. service.name is hard-coded to
+      # gomoku-httpd-rust in the binary, so no OTEL_SERVICE_NAME needed.
+      env {
+        name  = "HONEYCOMB_INGEST_API_KEY"
+        value = var.honeycomb_api_key
+      }
+      env {
+        name  = "HONEYCOMB_DATASET"
+        value = var.honeycomb_dataset
+      }
+      env {
+        name  = "ENVIRONMENT"
+        value = var.environment
+      }
+
+      startup_probe {
+        http_get {
+          path = "/health"
+          port = 8787
+        }
+        initial_delay_seconds = 2
+        period_seconds        = 3
+        failure_threshold     = 5
+        timeout_seconds       = 3
+      }
+
+      resources {
+        limits = {
+          cpu    = each.value.cpu
+          memory = each.value.memory
+        }
+      }
+    }
+
+    # One premium game pins the instance and uses all its vCPUs for the search.
     max_instance_request_concurrency = 1
   }
 
@@ -223,6 +307,25 @@ resource "google_cloud_run_v2_service" "api" {
         value = var.sendgrid_api_key
       }
 
+      env {
+        name  = "RESEND_API_KEY"
+        value = var.resend_api_key
+      }
+
+      # Premium routing. GOMOKU_RUST_ENGINE_URLS is a JSON map of vCPU tier →
+      # Rust engine URL; the api verifies an entitlement token, reads its
+      # `vcpus` claim, and routes the game to the matching URL (falling back to
+      # GOMOKU_HTTPD_URL — the free C engine — when unentitled). Price shown to
+      # the user is vcpus × PREMIUM_VCPU_COEFFICIENT.
+      env {
+        name  = "GOMOKU_RUST_ENGINE_URLS"
+        value = jsonencode({ for k, s in google_cloud_run_v2_service.httpd_rust : k => s.uri })
+      }
+      env {
+        name  = "PREMIUM_VCPU_COEFFICIENT"
+        value = tostring(var.premium_vcpu_coefficient)
+      }
+
       startup_probe {
         http_get {
           path = "/health"
@@ -263,6 +366,17 @@ resource "google_cloud_run_v2_service" "api" {
 resource "google_cloud_run_service_iam_member" "api_invokes_httpd" {
   location = google_cloud_run_v2_service.httpd.location
   service  = google_cloud_run_v2_service.httpd.name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${google_cloud_run_v2_service.api.template[0].service_account}"
+}
+
+# Allow API to invoke each Rust premium tier — same SA-only pattern as httpd.
+# No allUsers binding anywhere on these services, so Cloud Run's IAM proxy
+# 403s any direct request that isn't signed by the api's service account.
+resource "google_cloud_run_service_iam_member" "api_invokes_httpd_rust" {
+  for_each = google_cloud_run_v2_service.httpd_rust
+  location = each.value.location
+  service  = each.value.name
   role     = "roles/run.invoker"
   member   = "serviceAccount:${google_cloud_run_v2_service.api.template[0].service_account}"
 }

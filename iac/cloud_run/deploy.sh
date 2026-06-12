@@ -97,6 +97,14 @@ docker push "$HTTPD_TAG"
 HTTPD_IMAGE="$(resolve_digest "$HTTPD_TAG")"
 echo "  → $HTTPD_IMAGE"
 
+# Rust premium engine — one image, deployed to every var.rust_tiers service.
+RUST_TAG="$REGISTRY/gomoku-httpd-rust:${ENVIRONMENT}"
+echo "Building and pushing gomoku-httpd-rust ($RUST_TAG)..."
+docker buildx build --platform linux/amd64 -t "$RUST_TAG" --load "$REPO_ROOT/gomoku-httpd-rust/"
+docker push "$RUST_TAG"
+RUST_IMAGE="$(resolve_digest "$RUST_TAG")"
+echo "  → $RUST_IMAGE"
+
 API_TAG="$REGISTRY/gomoku-api:${ENVIRONMENT}"
 echo "Building and pushing gomoku-api ($API_TAG)..."
 docker buildx build --platform linux/amd64 -t "$API_TAG" --load "$REPO_ROOT/api/"
@@ -112,6 +120,7 @@ terraform apply \
   -var="region=$REGION" \
   -var="environment=$ENVIRONMENT" \
   -var="httpd_image=$HTTPD_IMAGE" \
+  -var="rust_httpd_image=$RUST_IMAGE" \
   -var="api_image=$API_IMAGE" \
   -var="jwt_secret=$TF_VAR_jwt_secret" \
   -var="database_url=$TF_VAR_database_url" \
