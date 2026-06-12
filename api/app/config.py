@@ -72,11 +72,33 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: list[str] = ["*"]
 
-    # Email
-    email_provider: str = "stdout"  # stdout | sendgrid
+    # Email. `email_provider` is the single switch — no environment branching:
+    #   localsmtp → dev (posts to a local mail catcher, see smtp_* below)
+    #   sendgrid  → staging/production (needs sendgrid_api_key)
+    #   memory    → tests (captured in app.services.memory.OUTBOX)
+    # Override EMAIL_PROVIDER in any .env overlay to send via SendGrid from a
+    # dev shell (also set SENDGRID_API_KEY).
+    email_provider: str = "localsmtp"
     email_from: str = "gomoku@email.gomoku.games"
     email_from_name: str = "Gomoku Support"
     sendgrid_api_key: str = ""
+    resend_api_key: str = ""
+
+    # Local SMTP (email_provider=localsmtp). Defaults target the Mailpit/MailHog
+    # convention (localhost:1025, no auth, no TLS).
+    smtp_host: str = "localhost"
+    smtp_port: int = 1025
+    # TLS mode is mutually exclusive: `smtp_use_tls` is implicit TLS (the whole
+    # connection is wrapped — Proton Mail Bridge in SSL mode, submission/465);
+    # `smtp_starttls` upgrades a plaintext connection. Leave both False for a
+    # plain catcher like Mailpit/MailHog on 1025.
+    smtp_use_tls: bool = False
+    smtp_starttls: bool = False
+    smtp_username: str = ""
+    smtp_password: str = ""
+    # Local bridges/catchers (Proton Mail Bridge, Mailpit over TLS) present a
+    # self-signed cert; set False to skip verification on the localhost hop.
+    smtp_validate_certs: bool = True
 
     # LogFire
     logfire_token: str | None = None

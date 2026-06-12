@@ -1,297 +1,397 @@
 """Tests for the transactional email service.
 
-The SendGrid path is exercised with a mocked httpx transport so we can assert
-the payload shape without making a network call. The stdout path is verified
-not to crash and to log/print the URL so it remains usable in development.
+Three layers are exercised:
+  * the provider abstraction + registry (``email.py``),
+  * each concrete backend (``memory``/``sendgrid``/``localsmtp``) with its
+    transport mocked so no network or SMTP server is needed,
+  * the password-reset content (``email_password_reset.py``).
 """
 
 from __future__ import annotations
 
-import json
-import logging
-from typing import Any
-
-import httpx
 import pytest
+from pydantic import ValidationError
 
 from app.config import settings
-from app.services import email as email_service
+from app.services import email_password_reset as pwreset
+from app.services import localsmtp, memory, resend, sendgrid
+from app.services.email import (
+    EmailDeliveryError,
+    EmailMessage,
+    get_email_provider,
+    send_email,
+)
 
-# --- fixtures ---------------------------------------------------------------
+# --- EmailMessage value object ----------------------------------------------
+
+
+def test_message_sender_falls_back_to_settings(monkeypatch):
+    monkeypatch.setattr(settings, "email_from", "gomoku@email.gomoku.games")
+    monkeypatch.setattr(settings, "email_from_name", "Gomoku Support")
+
+    msg = EmailMessage(to="a@b.com", subject="Hi", html="<p>hi</p>")
+    assert msg.sender_email() == "gomoku@email.gomoku.games"
+    assert msg.sender_name() == "Gomoku Support"
+    # reply_to defaults to the sender when unset.
+    assert msg.reply_to_email() == "gomoku@email.gomoku.games"
+
+
+def test_message_explicit_overrides_win():
+    msg = EmailMessage(
+        to="a@b.com",
+        subject="Hi",
+        html="<p>hi</p>",
+        from_email="noreply@x.com",
+        from_name="X",
+        reply_to="support@x.com",
+    )
+    assert msg.sender_email() == "noreply@x.com"
+    assert msg.sender_name() == "X"
+    assert msg.reply_to_email() == "support@x.com"
+
+
+# --- EmailMessage validation (Pydantic) -------------------------------------
+
+
+@pytest.mark.parametrize("bad_to", ["not-an-email", "no-domain@", "", "a@@b.com"])
+def test_message_rejects_invalid_recipient(bad_to):
+    with pytest.raises(ValidationError):
+        EmailMessage(to=bad_to, subject="Hi", html="<p>hi</p>")
+
+
+@pytest.mark.parametrize("field", ["from_email", "reply_to"])
+def test_message_rejects_invalid_optional_address(field):
+    with pytest.raises(ValidationError):
+        EmailMessage(**{"to": "a@b.com", "subject": "Hi", "html": "<p>hi</p>", field: "nope"})
+
+
+def test_message_rejects_empty_subject():
+    with pytest.raises(ValidationError):
+        EmailMessage(to="a@b.com", subject="", html="<p>hi</p>")
+
+
+def test_message_rejects_overlong_subject():
+    with pytest.raises(ValidationError):
+        EmailMessage(to="a@b.com", subject="x" * 256, html="<p>hi</p>")
+
+
+def test_message_rejects_empty_html():
+    with pytest.raises(ValidationError):
+        EmailMessage(to="a@b.com", subject="Hi", html="")
+
+
+def test_message_rejects_unknown_field():
+    with pytest.raises(ValidationError):
+        EmailMessage(**{"to": "a@b.com", "subject": "Hi", "html": "<p>hi</p>", "bcc": "x@y.com"})
+
+
+def test_message_is_frozen():
+    msg = EmailMessage(to="a@b.com", subject="Hi", html="<p>hi</p>")
+    with pytest.raises(ValidationError):
+        msg.subject = "changed"
+
+
+def test_message_text_is_optional():
+    msg = EmailMessage(to="a@b.com", subject="Hi", html="<p>hi</p>")
+    assert msg.text is None
+
+
+# --- provider registry / factory --------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("name", "cls"),
+    [
+        ("memory", memory.MemoryProvider),
+        ("sendgrid", sendgrid.SendgridProvider),
+        ("resend", resend.ResendProvider),
+        ("localsmtp", localsmtp.LocalSmtpProvider),
+    ],
+)
+def test_factory_resolves_each_provider(name, cls):
+    assert isinstance(get_email_provider(name), cls)
+
+
+def test_factory_uses_configured_provider(monkeypatch):
+    monkeypatch.setattr(settings, "email_provider", "memory")
+    assert isinstance(get_email_provider(), memory.MemoryProvider)
+
+
+def test_factory_unknown_provider_raises():
+    with pytest.raises(EmailDeliveryError):
+        get_email_provider("smoke-signals")
+
+
+# --- memory provider --------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_memory_provider_captures_message(monkeypatch):
+    monkeypatch.setattr(settings, "email_provider", "memory")
+    msg = EmailMessage(to="dest@example.com", subject="Subj", html="<p>x</p>", text="x")
+
+    await send_email(msg)
+
+    assert memory.OUTBOX == [msg]
+
+
+# --- sendgrid provider (mocked client) --------------------------------------
 
 
 @pytest.fixture
 def sendgrid_env(monkeypatch):
-    """Common SendGrid-mode settings with a known domain and From identity."""
     monkeypatch.setattr(settings, "email_provider", "sendgrid")
     monkeypatch.setattr(settings, "sendgrid_api_key", "SG.test-key")
     monkeypatch.setattr(settings, "email_from", "gomoku@email.gomoku.games")
     monkeypatch.setattr(settings, "email_from_name", "Gomoku Support")
-    monkeypatch.setattr(settings, "public_domain", "app.gomoku.games")
 
 
 @pytest.fixture
-def sendgrid_mock(monkeypatch):
-    """Install a MockTransport into httpx.AsyncClient and return a capture dict.
+def sendgrid_capture(monkeypatch):
+    """Patch SendGridAPIClient; capture the Mail payload, control the response."""
 
-    The handler can be overridden per-test by reassigning ``state['handler']``.
-    By default, returns ``202 Accepted`` (SendGrid's success status) and records
-    the request URL, Authorization header, and parsed JSON body.
-    """
-    state: dict[str, Any] = {"requests": []}
+    class _Resp:
+        def __init__(self, status_code: int) -> None:
+            self.status_code = status_code
+            self.body = b""
 
-    def default_handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(202, json={})
+    state: dict = {"payload": None, "status": 202, "raise": None, "api_key": None}
 
-    state["handler"] = default_handler
+    class _FakeClient:
+        def __init__(self, api_key: str) -> None:
+            state["api_key"] = api_key
 
-    def dispatch(request: httpx.Request) -> httpx.Response:
-        body = json.loads(request.content) if request.content else None
-        state["requests"].append(
-            {
-                "url": str(request.url),
-                "auth": request.headers.get("authorization"),
-                "body": body,
-            }
-        )
-        return state["handler"](request)
+        def send(self, mail):
+            if state["raise"] is not None:
+                raise state["raise"]
+            state["payload"] = mail.get()
+            return _Resp(state["status"])
 
-    transport = httpx.MockTransport(dispatch)
-    real_async_client = httpx.AsyncClient
-
-    def _client_with_mock(*args, **kwargs):
-        kwargs["transport"] = transport
-        return real_async_client(*args, **kwargs)
-
-    monkeypatch.setattr(email_service.httpx, "AsyncClient", _client_with_mock)
+    monkeypatch.setattr(sendgrid, "SendGridAPIClient", _FakeClient)
     return state
 
 
-# --- stdout provider --------------------------------------------------------
-
-
 @pytest.mark.asyncio
-async def test_stdout_provider_prints_and_logs_url(monkeypatch, capsys, caplog):
-    monkeypatch.setattr(settings, "email_provider", "stdout")
-    monkeypatch.setattr(settings, "public_domain", "app.gomoku.games")
-
-    with caplog.at_level(logging.INFO, logger="app.services.email"):
-        await email_service.send_password_reset_email("user@example.com", "tok-abc")
-
-    out = capsys.readouterr().out
-    assert "PASSWORD RESET EMAIL" in out
-    assert "To: user@example.com" in out
-    assert "https://app.gomoku.games/reset-password?token=tok-abc" in out
-    assert any("tok-abc" in r.getMessage() for r in caplog.records)
-
-
-@pytest.mark.asyncio
-async def test_stdout_provider_makes_no_http_call(monkeypatch, sendgrid_mock):
-    """Even with the mock transport installed, stdout mode must not hit HTTP."""
-    monkeypatch.setattr(settings, "email_provider", "stdout")
-
-    await email_service.send_password_reset_email("user@example.com", "tok")
-
-    assert sendgrid_mock["requests"] == []
-
-
-# --- SendGrid: happy path ---------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_sendgrid_calls_correct_endpoint_with_auth(sendgrid_env, sendgrid_mock):
-    await email_service.send_password_reset_email("dest@example.com", "tok-xyz")
-
-    assert len(sendgrid_mock["requests"]) == 1
-    req = sendgrid_mock["requests"][0]
-    assert req["url"] == "https://api.sendgrid.com/v3/mail/send"
-    assert req["auth"] == "Bearer SG.test-key"
-
-
-@pytest.mark.asyncio
-async def test_sendgrid_from_identity_is_gomoku_support(sendgrid_env, sendgrid_mock):
-    await email_service.send_password_reset_email("dest@example.com", "tok")
-
-    body = sendgrid_mock["requests"][0]["body"]
-    assert body["from"] == {
-        "email": "gomoku@email.gomoku.games",
-        "name": "Gomoku Support",
-    }
-    assert body["reply_to"] == {
-        "email": "gomoku@email.gomoku.games",
-        "name": "Gomoku Support",
-    }
-
-
-@pytest.mark.asyncio
-async def test_sendgrid_recipient_and_subject(sendgrid_env, sendgrid_mock):
-    await email_service.send_password_reset_email("dest@example.com", "tok")
-
-    body = sendgrid_mock["requests"][0]["body"]
-    assert body["personalizations"][0]["to"] == [{"email": "dest@example.com"}]
-    assert body["subject"] == "Reset your Gomoku password"
-
-
-@pytest.mark.asyncio
-async def test_sendgrid_has_text_and_html_parts(sendgrid_env, sendgrid_mock):
-    await email_service.send_password_reset_email("dest@example.com", "tok-xyz")
-
-    body = sendgrid_mock["requests"][0]["body"]
-    parts = {part["type"]: part["value"] for part in body["content"]}
-    assert set(parts) == {"text/plain", "text/html"}
-    assert parts["text/plain"].strip(), "plain-text part is empty"
-    assert parts["text/html"].lstrip().startswith("<!doctype html>")
-
-
-@pytest.mark.asyncio
-async def test_sendgrid_link_present_in_both_parts(sendgrid_env, sendgrid_mock):
-    await email_service.send_password_reset_email("dest@example.com", "tok-xyz")
-
-    expected = "https://app.gomoku.games/reset-password?token=tok-xyz"
-    parts = sendgrid_mock["requests"][0]["body"]["content"]
-    for part in parts:
-        assert expected in part["value"], f"reset URL missing from {part['type']}"
-
-
-@pytest.mark.asyncio
-async def test_sendgrid_html_includes_branding_and_expiry(sendgrid_env, sendgrid_mock):
-    await email_service.send_password_reset_email("dest@example.com", "tok")
-
-    body = sendgrid_mock["requests"][0]["body"]
-    html = next(p["value"] for p in body["content"] if p["type"] == "text/html")
-    assert "Reset password" in html
-    assert "Gomoku" in html
-    assert "1 hour" in html
-    assert "app.gomoku.games" in html
-
-
-@pytest.mark.asyncio
-async def test_sendgrid_html_has_no_unrendered_placeholders(sendgrid_env, sendgrid_mock):
-    """Guard against f-string placeholders leaking into the rendered HTML."""
-    await email_service.send_password_reset_email("dest@example.com", "tok")
-
-    html = next(
-        p["value"]
-        for p in sendgrid_mock["requests"][0]["body"]["content"]
-        if p["type"] == "text/html"
+async def test_sendgrid_builds_expected_payload(sendgrid_env, sendgrid_capture):
+    await send_email(
+        EmailMessage(
+            to="dest@example.com",
+            subject="Reset your Gomoku password",
+            html="<!doctype html><p>hi</p>",
+            text="hi",
+        )
     )
-    # Curly braces appear only as escaped {{ }} sequences or not at all.
-    assert "{reset_url}" not in html
-    assert "{logo}" not in html
-    assert "{site}" not in html
+
+    assert sendgrid_capture["api_key"] == "SG.test-key"
+    payload = sendgrid_capture["payload"]
+    assert payload["from"] == {"email": "gomoku@email.gomoku.games", "name": "Gomoku Support"}
+    assert payload["reply_to"] == {"email": "gomoku@email.gomoku.games", "name": "Gomoku Support"}
+    assert payload["personalizations"][0]["to"] == [{"email": "dest@example.com"}]
+    assert payload["subject"] == "Reset your Gomoku password"
+    parts = {p["type"]: p["value"] for p in payload["content"]}
+    assert parts["text/plain"] == "hi"
+    assert parts["text/html"] == "<!doctype html><p>hi</p>"
 
 
 @pytest.mark.asyncio
-async def test_sendgrid_disables_click_and_open_tracking(sendgrid_env, sendgrid_mock):
-    """Tracking pixels and URL rewriting break the one-time token semantics."""
-    await email_service.send_password_reset_email("dest@example.com", "tok")
+async def test_sendgrid_disables_tracking(sendgrid_env, sendgrid_capture):
+    await send_email(EmailMessage(to="d@e.com", subject="s", html="<p>h</p>", text="h"))
 
-    body = sendgrid_mock["requests"][0]["body"]
-    tracking = body["tracking_settings"]
+    tracking = sendgrid_capture["payload"]["tracking_settings"]
     assert tracking["click_tracking"]["enable"] is False
     assert tracking["open_tracking"]["enable"] is False
 
 
 @pytest.mark.asyncio
-async def test_sendgrid_uses_custom_domain_override(sendgrid_env, sendgrid_mock, monkeypatch):
-    """If public_domain is overridden, the reset link follows."""
-    monkeypatch.setattr(settings, "public_domain", "dev.gomoku.games")
-
-    await email_service.send_password_reset_email("dest@example.com", "tok-1")
-
-    parts = sendgrid_mock["requests"][0]["body"]["content"]
-    expected = "https://dev.gomoku.games/reset-password?token=tok-1"
-    for part in parts:
-        assert expected in part["value"]
-
-
-# --- SendGrid: error paths --------------------------------------------------
+async def test_sendgrid_raises_on_non_2xx(sendgrid_env, sendgrid_capture):
+    sendgrid_capture["status"] = 401
+    with pytest.raises(EmailDeliveryError):
+        await send_email(EmailMessage(to="d@e.com", subject="s", html="<p>h</p>"))
 
 
 @pytest.mark.asyncio
-async def test_sendgrid_raises_on_unauthorized(sendgrid_env, sendgrid_mock):
-    sendgrid_mock["handler"] = lambda req: httpx.Response(
-        401, text='{"errors":[{"message":"bad key"}]}'
-    )
-
-    with pytest.raises(RuntimeError, match="401"):
-        await email_service.send_password_reset_email("dest@example.com", "tok")
-
-
-@pytest.mark.asyncio
-async def test_sendgrid_raises_on_server_error(sendgrid_env, sendgrid_mock):
-    sendgrid_mock["handler"] = lambda req: httpx.Response(503, text="upstream down")
-
-    with pytest.raises(RuntimeError, match="503"):
-        await email_service.send_password_reset_email("dest@example.com", "tok")
-
-
-@pytest.mark.asyncio
-async def test_sendgrid_accepts_200_as_success(sendgrid_env, sendgrid_mock):
-    """SendGrid normally returns 202, but 200 is also valid — both are <300."""
-    sendgrid_mock["handler"] = lambda req: httpx.Response(200, json={})
-
-    await email_service.send_password_reset_email("dest@example.com", "tok")
-
-
-@pytest.mark.asyncio
-async def test_sendgrid_propagates_network_error(sendgrid_env, monkeypatch):
-    def handler(request: httpx.Request) -> httpx.Response:
-        raise httpx.ConnectError("dns failure", request=request)
-
-    transport = httpx.MockTransport(handler)
-    real_async_client = httpx.AsyncClient
-
-    def _client_with_mock(*args, **kwargs):
-        kwargs["transport"] = transport
-        return real_async_client(*args, **kwargs)
-
-    monkeypatch.setattr(email_service.httpx, "AsyncClient", _client_with_mock)
-
-    with pytest.raises(httpx.ConnectError):
-        await email_service.send_password_reset_email("dest@example.com", "tok")
-
-
-# --- configuration guards ---------------------------------------------------
+async def test_sendgrid_raises_on_transport_error(sendgrid_env, sendgrid_capture):
+    sendgrid_capture["raise"] = RuntimeError("dns failure")
+    with pytest.raises(EmailDeliveryError):
+        await send_email(EmailMessage(to="d@e.com", subject="s", html="<p>h</p>"))
 
 
 @pytest.mark.asyncio
 async def test_sendgrid_requires_api_key(monkeypatch):
     monkeypatch.setattr(settings, "email_provider", "sendgrid")
     monkeypatch.setattr(settings, "sendgrid_api_key", "")
+    with pytest.raises(EmailDeliveryError):
+        await send_email(EmailMessage(to="d@e.com", subject="s", html="<p>h</p>"))
 
-    with pytest.raises(RuntimeError, match="SENDGRID_API_KEY"):
-        await email_service.send_password_reset_email("dest@example.com", "tok")
+
+# --- resend provider (mocked SDK) -------------------------------------------
+
+
+@pytest.fixture
+def resend_env(monkeypatch):
+    monkeypatch.setattr(settings, "email_provider", "resend")
+    monkeypatch.setattr(settings, "resend_api_key", "re_test-key")
+    monkeypatch.setattr(settings, "email_from", "gomoku@email.gomoku.games")
+    monkeypatch.setattr(settings, "email_from_name", "Gomoku Support")
+
+
+@pytest.fixture
+def resend_capture(monkeypatch):
+    """Patch resend.Emails.send; capture the params dict, control the result."""
+    state: dict = {"params": None, "raise": None}
+
+    def _fake_send(params):
+        if state["raise"] is not None:
+            raise state["raise"]
+        state["params"] = params
+        return {"id": "email-123"}
+
+    monkeypatch.setattr(resend.resend.Emails, "send", _fake_send)
+    return state
 
 
 @pytest.mark.asyncio
-async def test_unknown_provider_raises(monkeypatch):
-    monkeypatch.setattr(settings, "email_provider", "smoke-signals")
+async def test_resend_builds_expected_params(resend_env, resend_capture):
+    await send_email(
+        EmailMessage(
+            to="dest@example.com",
+            subject="Reset your Gomoku password",
+            html="<!doctype html><p>hi</p>",
+            text="hi",
+        )
+    )
 
-    with pytest.raises(RuntimeError, match="Unknown email_provider"):
-        await email_service.send_password_reset_email("dest@example.com", "tok")
+    # The SDK reads its key from a module global; the provider sets it per call.
+    assert resend.resend.api_key == "re_test-key"
+    params = resend_capture["params"]
+    assert params["from"] == "Gomoku Support <gomoku@email.gomoku.games>"
+    assert params["to"] == ["dest@example.com"]
+    assert params["subject"] == "Reset your Gomoku password"
+    assert params["html"] == "<!doctype html><p>hi</p>"
+    assert params["text"] == "hi"
+    assert params["reply_to"] == "Gomoku Support <gomoku@email.gomoku.games>"
 
 
-# --- direct template renderers ----------------------------------------------
+@pytest.mark.asyncio
+async def test_resend_omits_text_when_absent(resend_env, resend_capture):
+    await send_email(EmailMessage(to="d@e.com", subject="s", html="<p>h</p>"))
+
+    assert "text" not in resend_capture["params"]
 
 
-def test_text_template_is_plain_ascii(monkeypatch):
-    """Plain-text bodies should render cleanly in any client."""
+@pytest.mark.asyncio
+async def test_resend_raises_on_sdk_error(resend_env, resend_capture):
+    resend_capture["raise"] = RuntimeError("resend 422")
+    with pytest.raises(EmailDeliveryError):
+        await send_email(EmailMessage(to="d@e.com", subject="s", html="<p>h</p>"))
+
+
+@pytest.mark.asyncio
+async def test_resend_requires_api_key(monkeypatch):
+    monkeypatch.setattr(settings, "email_provider", "resend")
+    monkeypatch.setattr(settings, "resend_api_key", "")
+    with pytest.raises(EmailDeliveryError):
+        await send_email(EmailMessage(to="d@e.com", subject="s", html="<p>h</p>"))
+
+
+# --- localsmtp provider (mocked aiosmtplib) ---------------------------------
+
+
+@pytest.fixture
+def smtp_capture(monkeypatch):
+    state: dict = {"message": None, "kwargs": None, "raise": None}
+
+    async def _fake_send(message, **kwargs):
+        if state["raise"] is not None:
+            raise state["raise"]
+        state["message"] = message
+        state["kwargs"] = kwargs
+        return {}
+
+    monkeypatch.setattr(localsmtp.aiosmtplib, "send", _fake_send)
+    return state
+
+
+@pytest.mark.asyncio
+async def test_localsmtp_builds_multipart_message(monkeypatch, smtp_capture):
+    monkeypatch.setattr(settings, "email_provider", "localsmtp")
+    monkeypatch.setattr(settings, "email_from", "gomoku@email.gomoku.games")
+    monkeypatch.setattr(settings, "email_from_name", "Gomoku Support")
+    monkeypatch.setattr(settings, "smtp_host", "localhost")
+    monkeypatch.setattr(settings, "smtp_port", 1025)
+
+    await send_email(
+        EmailMessage(to="dest@example.com", subject="Subj", html="<p>hi</p>", text="hi")
+    )
+
+    mime = smtp_capture["message"]
+    assert mime["To"] == "dest@example.com"
+    assert mime["Subject"] == "Subj"
+    assert mime["From"] == "Gomoku Support <gomoku@email.gomoku.games>"
+    assert mime["Reply-To"] == "gomoku@email.gomoku.games"
+    body = mime.get_body(preferencelist=("html",)).get_content()
+    assert "<p>hi</p>" in body
+    assert smtp_capture["kwargs"]["hostname"] == "localhost"
+    assert smtp_capture["kwargs"]["port"] == 1025
+
+
+@pytest.mark.asyncio
+async def test_localsmtp_raises_on_connection_failure(monkeypatch, smtp_capture):
+    monkeypatch.setattr(settings, "email_provider", "localsmtp")
+    smtp_capture["raise"] = ConnectionRefusedError("no catcher")
+    with pytest.raises(EmailDeliveryError):
+        await send_email(EmailMessage(to="d@e.com", subject="s", html="<p>h</p>"))
+
+
+# --- password reset: content + dispatch -------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_password_reset_dispatches_via_memory(monkeypatch):
+    monkeypatch.setattr(settings, "email_provider", "memory")
     monkeypatch.setattr(settings, "public_domain", "app.gomoku.games")
 
-    text = email_service._password_reset_text("https://app.gomoku.games/reset-password?token=t")
+    await pwreset.send_password_reset_email("user@example.com", "tok-abc")
+
+    assert len(memory.OUTBOX) == 1
+    msg = memory.OUTBOX[0]
+    assert msg.to == "user@example.com"
+    assert msg.subject == "Reset your Gomoku password"
+    expected = "https://app.gomoku.games/reset-password?token=tok-abc"
+    assert msg.text is not None
+    assert expected in msg.html
+    assert expected in msg.text
+
+
+@pytest.mark.asyncio
+async def test_password_reset_follows_domain_override(monkeypatch):
+    monkeypatch.setattr(settings, "email_provider", "memory")
+    monkeypatch.setattr(settings, "public_domain", "dev.gomoku.games")
+
+    await pwreset.send_password_reset_email("user@example.com", "tok-1")
+
+    msg = memory.OUTBOX[0]
+    expected = "https://dev.gomoku.games/reset-password?token=tok-1"
+    assert msg.text is not None
+    assert expected in msg.html
+    assert expected in msg.text
+
+
+def test_password_reset_text_is_plain(monkeypatch):
+    monkeypatch.setattr(settings, "public_domain", "app.gomoku.games")
+    text = pwreset.password_reset_text("https://app.gomoku.games/reset-password?token=t")
     assert text.startswith("Hi,")
     assert "1 hour" in text
     assert "ignore this email" in text
-    # No leftover format placeholders.
     assert "{" not in text and "}" not in text
 
 
-def test_html_template_includes_logo_and_link(monkeypatch):
+def test_password_reset_html_includes_logo_and_link(monkeypatch):
     monkeypatch.setattr(settings, "public_domain", "app.gomoku.games")
-
-    html = email_service._password_reset_html("https://app.gomoku.games/reset-password?token=t")
+    html = pwreset.password_reset_html("https://app.gomoku.games/reset-password?token=t")
     assert "<!doctype html>" in html
     assert "android-chrome-192x192.png" in html
     assert "https://app.gomoku.games/reset-password?token=t" in html
     assert "Reset password" in html
+    # No leftover f-string placeholders leaked into the render.
+    assert "{reset_url}" not in html and "{logo}" not in html
