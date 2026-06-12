@@ -46,3 +46,8 @@ export const STAR_POINTS_15: [number, number][] = [
 
 // Fixed board pixel size to prevent layout jumps
 export const BOARD_PX = 600;
+
+// Inner margin (px) between the board edge and the outer grid lines. Single
+// source of truth: Board.tsx draws/hit-tests with it, and the Playwright e2e
+// (e2e-pw/support.ts) imports it to compute click coordinates.
+export const PADDING = 24;

@@ -101,19 +101,28 @@ test.describe("Two-human multiplayer game (real dual browser contexts)", () => {
         const mover = m.player === "X" ? aPage : bPage;
         const last = i === MOVES.length - 1;
 
+        // Scope to the board's own turn-status line (data-testid) rather than
+        // a bare text match: "Waiting for opponent" is also rendered by the
+        // modal and waiting screens, so an unscoped regex could resolve to
+        // stale UI instead of the live game state.
         await expect(
-          mover.getByText(/Your move\./),
+          mover.getByTestId("turn-status"),
           `move ${i + 1}: ${m.player} sees their turn (propagated live)`,
-        ).toBeVisible({ timeout: 30_000 });
+        ).toHaveText("Your move.", { timeout: 30_000 });
 
         await placeStone(mover, BOARD_SIZE, m.row, m.col);
 
-        await expect(
-          mover.getByText(
-            last ? /wins against|Game Over/ : /Waiting for opponent/,
-          ),
-          `move ${i + 1}: board reflects the stone`,
-        ).toBeVisible({ timeout: 15_000 });
+        if (last) {
+          await expect(
+            mover.getByText(/wins against|Game Over/),
+            `move ${i + 1}: the winning stone ends the game`,
+          ).toBeVisible({ timeout: 15_000 });
+        } else {
+          await expect(
+            mover.getByTestId("turn-status"),
+            `move ${i + 1}: the stone is accepted, turn passes to the opponent`,
+          ).toHaveText("Waiting for opponent…", { timeout: 15_000 });
+        }
       }
 
       // ---- 6. Both browsers show the game-over outcome. ------------------

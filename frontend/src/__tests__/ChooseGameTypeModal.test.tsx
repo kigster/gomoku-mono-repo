@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -323,5 +324,51 @@ describe("ChooseGameTypeModal", () => {
       screen.getByLabelText(/Another Player/i, { selector: "input" }),
     );
     expect(await screen.findByText("Network down")).toBeInTheDocument();
+  });
+
+  // Regression guard for the StrictMode mount/unmount/remount hang (the bug
+  // this component's auto-create effect was reworked to fix). Under StrictMode
+  // the effect runs, is torn down, then runs again. The first run's create
+  // must be discarded-and-cancelled (so it doesn't leak a waiting row) while
+  // the remount recreates a fresh invite — instead of early-returning on a
+  // stale ref and hanging forever on "Generating your invitation link…".
+  it("under StrictMode, recreates the invite and cancels the orphaned game", async () => {
+    const firstGame: MultiplayerGameView = {
+      ...FAKE_GAME,
+      code: "FIRST2",
+      invite_url: "http://localhost/play/FIRST2",
+    };
+    const secondGame: MultiplayerGameView = {
+      ...FAKE_GAME,
+      code: "SECND3",
+      invite_url: "http://localhost/play/SECND3",
+    };
+    mockNewGame
+      .mockResolvedValueOnce(firstGame)
+      .mockResolvedValueOnce(secondGame);
+    mockCancelGame.mockResolvedValue({ ...FAKE_GAME, state: "cancelled" });
+
+    render(
+      <StrictMode>
+        <ChooseGameTypeModal
+          authToken="test-token"
+          onAIChosen={vi.fn()}
+          onGuestJoined={vi.fn()}
+          onClose={vi.fn()}
+        />
+      </StrictMode>,
+    );
+
+    // The double-invoked effect issues two creates: the discarded first run
+    // and the committed remount.
+    await waitFor(() => expect(mockNewGame).toHaveBeenCalledTimes(2));
+    // The remount's invite link is shown — proof the modal did NOT hang.
+    expect(
+      await screen.findByDisplayValue(secondGame.invite_url),
+    ).toBeInTheDocument();
+    // The orphaned first game is actively cancelled, not leaked.
+    await waitFor(() =>
+      expect(mockCancelGame).toHaveBeenCalledWith("test-token", firstGame.code),
+    );
   });
 });
