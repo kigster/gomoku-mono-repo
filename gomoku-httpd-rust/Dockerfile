@@ -1,28 +1,44 @@
-# Stage 1: The Builder
-# Use the specified Ubuntu LTS (22.04) as the base image.
-# Use the official Rust image from Docker Hub
-FROM rust:latest
+# syntax=docker/dockerfile:1
 
-# Install all necessary build dependencies. `build-essential` includes gcc and make.
-RUN apt-get update && apt-get install -y build-essential git just
+# ---------------------------------------------------------------------------
+# Stage 1: Builder
+# ---------------------------------------------------------------------------
+# Compile the release binary on the official Rust image (Debian bookworm,
+# glibc 2.36). `just build-release` runs `cargo build --release` and copies
+# the binary into bin/.
+FROM rust:latest AS builder
 
-# Set the working directory inside the container to /app. This is where the source code will be copied and built.
+# `just` drives the build; build-essential/git satisfy native-dep compilation.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential git just \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# Copy the entire project source code into the container.
+# Copy the full source tree (host target/ and bin/ are excluded via
+# .dockerignore so the in-container cargo build is clean and the context
+# stays small).
 COPY . .
 
-# from the host machine. This ensures a clean build from source inside the container.
+# Produces target/release/gomoku-httpd-rust (+ bin/ copies/symlink).
 RUN just build-release
 
-# Expose the ports that the application will listen on.
+# ---------------------------------------------------------------------------
+# Stage 2: Runtime
+# ---------------------------------------------------------------------------
+# Distroless cc-debian12 matches the builder's Debian 12 / glibc 2.36, ships
+# libgcc and ca-certificates, and has no shell or package manager (~25MB).
+# CA certs are required for the OTLP/rustls HTTPS export to api.honeycomb.io.
+FROM gcr.io/distroless/cc-debian12
+
+WORKDIR /app
+
+# Distroless has no shell to recreate the `gomoku-httpd` symlink, so copy the
+# real binary straight to the path Terraform / the runtime contract invokes.
+COPY --from=builder /app/target/release/gomoku-httpd-rust /app/bin/gomoku-httpd
+
 # 8787: HTTP API port
-# 8788: HAProxy agent-check port
-EXPOSE 8787 8788
+EXPOSE 8787
 
-# Set the final command to run when the container starts.
-# This starts the Gomoku HTTP daemon with:
-# - HTTP API on port 8787
-# - HAProxy agent-check on port 8788 (reports ready/drain status)
-CMD ["./bin/gomoku-httpd", "-b", "0.0.0.0:8787", "-a", "8788", "-r", "-L", "debug"]
-
+# Default command; Cloud Run / Terraform may override it.
+CMD ["./bin/gomoku-httpd", "-b", "0.0.0.0:8787", "-L", "info"]

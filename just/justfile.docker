@@ -6,6 +6,10 @@
 docker-build-httpd:
     docker build -t gomoku-httpd:latest gomoku-c/
 
+# Build the gomoku-httpd docker container
+docker-build-httpd-rust:
+    docker build -t gomoku-httpd-rust:latest gomoku-httpd-rust
+
 # Build the gomoku-api docker container (includes frontend static assets)
 docker-build-api: install-frontend
     docker build -t gomoku-api:latest api/

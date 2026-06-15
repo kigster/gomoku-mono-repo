@@ -1,34 +1,52 @@
-# Stage 1: The Builder
-# Use the specified Ubuntu LTS (22.04) as the base image.
+# syntax=docker/dockerfile:1
+#
+# Multi-stage build for the Gomoku C engine HTTP daemon.
+#
+# Stage 1 compiles everything on ubuntu:22.04 (glibc 2.35) and gates the
+# build on `make test`. Stage 2 ships only the gomoku-httpd binary on a
+# distroless base. json-c is linked statically (BUILD_SHARED_LIBS=OFF), so
+# the binary's only runtime deps are glibc, libm, and libpthread — all
+# provided by distroless/cc-debian12 (glibc 2.36, forward-compatible with
+# the 2.35 we built against).
+
+# ---------------------------------------------------------------------------
+# Stage 1: builder
+# ---------------------------------------------------------------------------
 FROM ubuntu:22.04 AS builder
 
-# Install all necessary build dependencies. `build-essential` includes gcc and make.
-RUN apt-get update && apt-get install -y build-essential cmake git
+# build-essential (gcc/g++/make), cmake (json-c + googletest), git
+# (tests-setup clones googletest), ca-certificates (https git clone).
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        git \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-# Set the working directory for the build process.
 WORKDIR /app/source
 
-# Copy the entire project source code into the container.
+# Copy the source (context is trimmed by .dockerignore).
 COPY . .
 
-# from the host machine. This ensures a clean build from source inside the container.
-RUN make clean
+# Clean any stray artifacts, build all targets, then run the full test
+# suite. A test failure aborts the image build here.
+RUN make clean && make all -j4 && make test
 
-# Build all targets (gomoku, gomoku-httpd, etc.).
-# This command also handles building vendored json-c from source.
-RUN make all -j 4
+# ---------------------------------------------------------------------------
+# Stage 2: runtime
+# ---------------------------------------------------------------------------
+# distroless/cc-debian12: glibc + libgcc + ca-certs, no shell (~25MB).
+FROM gcr.io/distroless/cc-debian12
 
-# Run the test suite to validate the build. If tests fail, the Docker build will stop here.
-RUN make test
+WORKDIR /app
 
-# Expose the ports that the application will listen on.
-# 8787: HTTP API port
-# 8788: HAProxy agent-check port
+# Only the daemon binary is shipped. Everything else (compilers, source,
+# test binaries, json-c .a) stays in the builder stage.
+COPY --from=builder /app/source/bin/gomoku-httpd /app/bin/gomoku-httpd
+
+# 8787: HTTP API port. 8788: agent-check port (optional).
 EXPOSE 8787 8788
 
-# Set the final command to run when the container starts.
-# This starts the Gomoku HTTP daemon with:
-# - HTTP API on port 8787
-# - HAProxy agent-check on port 8788 (reports ready/drain status)
-CMD ["./bin/gomoku-httpd", "-b", "0.0.0.0:8787", "-a", "8788", "-r", "-L", "debug"]
-
+# Default command. Cloud Run / Terraform override this; the contract is a
+# binary at ./bin/gomoku-httpd that binds 0.0.0.0:8787 and serves /health.
+CMD ["./bin/gomoku-httpd", "-b", "0.0.0.0:8787", "-a", "8788", "-r", "-L", "info"]
