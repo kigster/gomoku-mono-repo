@@ -31,18 +31,37 @@ directly instead (each is the same dev command the per-component docs use):
 - **Frontend** (Vite): `cd frontend && npm run dev` (serves on `:5173`, proxies
   API routes to `:8000`).
 
-### Engine URL: bypass Envoy in dev
+### Engine URL: Routing Setup in Development
 
-The API reaches the engine via `GOMOKU_HTTPD_URL` (defaults to
-`http://localhost:10000`, i.e. Envoy). Envoy/nginx are **not** installed on this
+The development script
+
+```bash
+bin/gctl [start [-r]] | stop]
+'`'
+
+Does the following:
+* generates the nginx.conf from a template. 
+
+
+> [!IMPORTANT]
+>
+> please install nginx via brew, overwrite its nginx.conf with the symlink to the generated version in the iac folder
+
+* it starts Envoy starts. 
+* It also starts the GoMoku HTTPD cluster, either the c version or Rust if the -r flag is used. 
+* Additionally, it starts the FastAPI server, which responds to API requests and serves the static HTML compiled from the frontend folder. 
+* The frontend is not served using bytes; it's compiled and served from the FastAPI folder.
+
+The API reaches the engine via `GOMOKU_HTTPD_URL` (defaults to `http://localhost:10000`, i.e. Envoy). 
+
+Envoy/nginx are **not** installed on this
 VM, so point the API straight at a single worker with
 `GOMOKU_HTTPD_URL=http://localhost:9500`. The API proxies `POST /game/play` →
 engine `POST /gomoku/play`.
 
 ### Database port for migrations and tests
 
-Because Postgres is on **5432** (repo default is 5433), export
-`POSTGRESQL_PORT=5432` for any test/migration command, e.g.:
+Because Postgres is on **5432** (repo default is 5433), export `POSTGRESQL_PORT=5432` for any test/migration command, e.g.:
 
 - Migrate: `cd api && DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/gomoku uv run alembic upgrade head` (repeat for `gomoku_test`). Run migrations after pulling new revisions before starting the API or tests.
 - API tests: `cd api && POSTGRESQL_PORT=5432 ENVIRONMENT=test uv run --group test pytest -n 5`
