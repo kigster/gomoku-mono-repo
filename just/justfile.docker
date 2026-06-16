@@ -1,39 +1,93 @@
 # vim: ft=just
+#
+# Docker image builds for the three deployable containers:
+#
+#   gomoku-api          ReactJS static bundle + FastAPI server (talks to an
+#                       external Postgres). The FastAPI layer routes AI moves
+#                       to one of the two interface-compatible game backends.
+#   gomoku-httpd-c      C game engine daemon  (gomoku-c/)        — default tier
+#   gomoku-httpd-rust   Rust game engine daemon (gomoku-httpd-rust/) — premium tier
+#
+# Both backends expose the same HTTP interface on :8787, so the API can pick
+# either at request time. `just build-docker` builds all three; the amd64
+# variants are what `bin/deploy` ships to Cloud Run.
 
-# ─── Docker ───────────────────────────────────────────────────────────────────
+# ─── Image tags ─────────────────────────────────────────────────────────────
+img_api  := "gomoku-api:latest"
+img_c    := "gomoku-httpd-c:latest"
+img_rust := "gomoku-httpd-rust:latest"
 
-# Build the gomoku-httpd docker container
-docker-build-httpd:
-    docker build -t gomoku-httpd:latest gomoku-c/
+# ─── Build (native arch) ──────────────────────────────────────────────────────
 
-# Build the gomoku-httpd docker container
-docker-build-httpd-rust:
-    docker build -t gomoku-httpd-rust:latest gomoku-httpd-rust
-
-# Build the gomoku-api docker container (includes frontend static assets)
+# Build the frontend+API container (bundles the freshly built SPA into api/public)
 docker-build-api: install-frontend
-    docker build -t gomoku-api:latest api/
+    docker build -t {{ img_api }} api/
 
-# Build all docker containers (alias: docker-all)
-docker-build-all: docker-build-httpd docker-build-api
+# Build the C game-engine daemon container
+docker-build-c:
+    docker build -t {{ img_c }} gomoku-c/
 
-# Joiner — matches the file-extension naming convention used elsewhere
-docker-all: docker-build-all
+# Build the Rust game-engine daemon container
+docker-build-rust:
+    docker build -t {{ img_rust }} gomoku-httpd-rust/
 
-# Build gomoku-httpd for linux/amd64 (for GCP)
-docker-build-httpd-amd64:
-    docker buildx build --platform linux/amd64 -t gomoku-httpd:latest --load gomoku-c/
+# Build all three deployable containers (frontend/API + both backends)
+build-docker: docker-build-api docker-build-c docker-build-rust
 
-# Build gomoku-api for linux/amd64 (for GCP, includes frontend)
+# ─── Build (linux/amd64 for Cloud Run) ────────────────────────────────────────
+
+# Build the frontend+API container for linux/amd64
 docker-build-api-amd64: install-frontend
-    docker buildx build --platform linux/amd64 -t gomoku-api:latest --load api/
+    docker buildx build --platform linux/amd64 -t {{ img_api }} --load api/
 
-# Build all containers for linux/amd64
-docker-build-all-amd64: docker-build-httpd-amd64 docker-build-api-amd64
+# Build the C backend container for linux/amd64
+docker-build-c-amd64:
+    docker buildx build --platform linux/amd64 -t {{ img_c }} --load gomoku-c/
 
-# Build everything and prepare Docker images for Cloud Run deploy
-cr-prepare: docker-build-all-amd64
+# Build the Rust backend container for linux/amd64
+docker-build-rust-amd64:
+    docker buildx build --platform linux/amd64 -t {{ img_rust }} --load gomoku-httpd-rust/
 
-# Run the gomoku-httpd docker container
-docker-run:
-    docker run -p 8787:8787 gomoku-httpd:latest
+# Build all three deployable containers for linux/amd64 (what deploy ships)
+build-docker-amd64: docker-build-api-amd64 docker-build-c-amd64 docker-build-rust-amd64
+
+# Aliases kept for the legacy deploy entry points (cr-init/cr-update/cr-prepare)
+# and the README, which still refer to the pre-rename joiner names.
+
+# Alias: build all three containers (native arch)
+docker-build-all: build-docker
+
+# Alias: build all three containers (linux/amd64)
+docker-build-all-amd64: build-docker-amd64
+
+# Alias: build all three containers for Cloud Run (linux/amd64)
+cr-prepare: build-docker-amd64
+
+# Alias kept for the recipe name introduced in #119 (distroless rust image)
+docker-build-httpd-rust: docker-build-rust
+
+# ─── Run (local smoke tests) ──────────────────────────────────────────────────
+
+# Run the frontend+API container on :8000
+docker-run-api:
+    docker run --rm -p 8000:8000 {{ img_api }}
+
+# Run the C backend on :8787
+docker-run-c:
+    docker run --rm -p 8787:8787 {{ img_c }}
+
+# The binary is identical across tiers — vCPU count is a runtime knob, mirroring
+# the 4/8/16-vCPU Cloud Run revisions the premium backend deploys as.
+#
+# Run the Rust backend on :8787 with a vCPU budget (override: `CPUS=16`)
+docker-run-rust CPUS="8":
+    docker run --rm --cpus {{ CPUS }} -p 8787:8787 {{ img_rust }}
+
+# Run the premium Rust backend with 4 vCPUs
+rust-4: (docker-run-rust "4")
+
+# Run the premium Rust backend with 8 vCPUs
+rust-8: (docker-run-rust "8")
+
+# Run the premium Rust backend with 16 vCPUs
+rust-16: (docker-run-rust "16")

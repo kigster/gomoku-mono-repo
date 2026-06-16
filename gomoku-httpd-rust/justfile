@@ -12,6 +12,10 @@
 set dotenv-load := true
 set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 
+tag     := "v" + version
+root    := `cd .. && pwd -P`
+version := `cd .. && just version`
+
 # Default target: print all available recipes.
 default:
     @just --list
@@ -323,6 +327,8 @@ watch-run *ARGS:
 # Print versions of the Rust toolchain and the main cargo plugins.
 # Handy for bug reports and CI logs.
 versions:
+    @echo -n -e "\033[1;37mgomoku --version:\033[0m\n "
+    @cd ../ && just version | grep -v tag | sed 's/Version is//g'
     rustc --version
     cargo --version
     rustup --version
