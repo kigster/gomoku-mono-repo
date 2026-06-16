@@ -103,3 +103,6 @@ game*json
 /frontend/blob-report/
 /frontend/playwright/.cache/
 sendgrid.env
+
+# google-run-deployer master keys (mirrored in 1Password; never commit)
+deployer/config/credentials/*.key
