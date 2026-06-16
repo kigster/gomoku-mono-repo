@@ -15,7 +15,7 @@ set shell := ["bash", "-eu", "-o", "pipefail", "-c"]
 # `just deploy` work in a fresh shell or CI runner where direnv is absent.
 set dotenv-load
 
-version := `grep 'GAME_VERSION' gomoku-c/src/gomoku/gomoku.h | awk '{print $3}' | tr -d '"'| tr -d '\n'`
+version := `grep '#define GAME_VERSION' gomoku-c/src/gomoku/gomoku.h | awk '{print $3}' | tr -d '"'| tr -d '\n'`
 tag     := "v" + version
 find    := "/usr/bin/find"
 
