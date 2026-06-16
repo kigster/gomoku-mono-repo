@@ -1,0 +1,60 @@
+# google-run-deployer configuration for the Gomoku mono-repo.
+# Non-secret wiring only — every secret lives in the encrypted credentials
+# blobs (config/credentials/<env>.yml.enc) with master keys in 1Password.
+#
+# Paths are relative to the repo root (the directory above ./deployer).
+
+credentials_dir: deployer/config/credentials
+artifact_repo: gomoku-repo
+
+terraform:
+  dir: iac/cloud_run
+  state_bucket: gomoku-tfstate
+  # %{environment} is filled per deploy → cloud-run/staging/gomoku, etc.
+  state_prefix: "cloud-run/%{environment}/gomoku"
+
+onepassword:
+  vault: Private
+  item_template: "gomoku-%{environment}-master-key"
+
+migrate:
+  command: ["uv", "run", "alembic", "upgrade", "head"]
+  dir: api
+
+# Optional pre-build: bundle the React SPA into api/public before the api
+# image builds. Runs in parallel with frontend-independent image builds.
+frontend:
+  command: ["just", "install-frontend"]
+  dir: "."
+
+services:
+  - name: gomoku-httpd
+    context: gomoku-c
+    tf_image_var: httpd_image
+  - name: gomoku-api
+    context: api
+    tf_image_var: api_image
+    needs_frontend: true
+
+environments:
+  production:
+    project_id: sand-castle-486503-d0
+    region: us-central1
+    custom_domain: gomoku.us
+    clone_database: false
+
+  staging:
+    project_id: sand-castle-486503-d0
+    region: us-central1
+    custom_domain: staging.gomoku.games
+    clone_database: true
+    neon:
+      branch_name: staging
+      parent_branch: production
+      expires_in_hours: 24
+      database: gomoku
+      # Neon role that owns the database — verify against your project
+      # (Neon's default is often "neondb_owner"). Used only to resolve the
+      # pooled connection string for the freshly cloned branch.
+      role: neondb_owner
+      pooled: true

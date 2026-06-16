@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# bin/cloud — repo-root shim for the google-run-deployer gem (in ./deployer).
+#
+# Resolves the repo root, points the deployer at it via DEPLOYER_REPO_ROOT
+# (so deployer.yml's relative paths resolve correctly no matter the CWD), and
+# runs the gem's `cloud` executable through its own bundle.
+#
+#   bin/cloud setup staging
+#   bin/cloud credentials edit staging
+#   bin/cloud deploy staging
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export DEPLOYER_REPO_ROOT="$REPO_ROOT"
+
+# Run from inside deployer/ so rbenv selects the gem's pinned Ruby
+# (deployer/.ruby-version) and bundler finds deployer/Gemfile. The repo root
+# may run a different Ruby; DEPLOYER_REPO_ROOT keeps path resolution correct.
+cd "$REPO_ROOT/deployer"
+exec bundle exec ruby exe/cloud "$@"
