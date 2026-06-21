@@ -1,6 +1,9 @@
 #ifndef NET_TEST_CLIENT_UTILS_H
 #define NET_TEST_CLIENT_UTILS_H
 
+#define MAX_TEST_CLIENT_DEPTH 10
+#define MAX_TEST_CLIENT_RADIUS 4
+
 #include <stddef.h>
 
 #ifdef __cplusplus

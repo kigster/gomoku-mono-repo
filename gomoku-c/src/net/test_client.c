@@ -634,7 +634,7 @@ static int parse_depth_arg(const char *optarg, int *depth_x, int *depth_o) {
     *depth_x = atoi(optarg);
     *depth_o = *depth_x;
   }
-  if (*depth_x < 1 || *depth_x > 6 || *depth_o < 1 || *depth_o > 6)
+  if (*depth_x < 1 || *depth_x > MAX_TEST_CLIENT_DEPTH || *depth_o < 1 || *depth_o > MAX_TEST_CLIENT_DEPTH)
     return -1;
   return 0;
 }
@@ -730,14 +730,18 @@ int main(int argc, char *argv[]) {
       break;
     case 'd':
       if (parse_depth_arg(optarg, &depth_x, &depth_o) != 0) {
-        fprintf(stderr, "Error: Depth must be 1-6 or X:Y (e.g. 2:3)\n");
+        fprintf(stderr, "Error: Depth must be between %d to %d or X:O (e.g. 2:5)\n", 1, MAX_TEST_CLIENT_DEPTH);
+        fprintf(stderr, "       When provided as two numbers X:O, the two AI players\n");
+        fprintf(stderr, "       can play each other but at different depth levels.\n");
+        fprintf(stderr, "       For example, --depth 4:5 will make X play at depth 4 and\n");
+        fprintf(stderr, "       and O play at depth 5 so you can compare the depth impact.\n");
         return 1;
       }
       break;
     case 'r':
       radius = atoi(optarg);
-      if (radius < 1 || radius > 4) {
-        fprintf(stderr, "Error: Radius must be 1-4\n");
+      if (radius < 1 || radius > MAX_TEST_CLIENT_RADIUS) {
+        fprintf(stderr, "Error: Radius must be between 1 and %d\n", MAX_TEST_CLIENT_RADIUS);
         return 1;
       }
       break;
