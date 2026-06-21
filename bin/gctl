@@ -267,34 +267,68 @@ cmd_configs() {
   local workers="${1:-10}"
   local template_dir="$PROJECT_DIR/iac/local/templates"
 
-  local nginx_config
-  nginx_config="$(nginx -h 2>&1 | grep -- '-c.*default' | tr -d ')' | awk 'BEGIN{FS="default: "}{print $2}')"
-
-  local nginx_home
-  nginx_home="$(dirname "${nginx_config}")"
-
   h3 "Generating envoy.yaml config for ${workers} workers..."
   local output="$PROJECT_DIR/iac/local/envoy/envoy.yaml"
   bash "$template_dir/envoy.yaml.sh" "$workers" >"$output"
   success "envoy.yaml config generated."
 
-  h3 "Generating nginx.conf..."
-  output="$PROJECT_DIR/iac/local/nginx.conf"
-  bash "$template_dir/nginx.conf.sh" >"$output"
-  success "nginx.conf config generated."
+  hr
 
-  if [[ -f ${nginx_home}/nginx.conf ]]; then
-    run "sudo mv ${nginx_home}/nginx.conf ${nginx_home}/nginx.conf.bak"
-    run "sudo ln -nfs ${PROJECT_DIR}/iac/local/nginx.conf ${nginx_home}/nginx.conf"
-    success "${nginx_home}/nginx.conf has been symlinked."
-  elif [[ -d ${nginx_home} ]]; then
-    run "sudo ln -nfs ${PROJECT_DIR}/iac/local/nginx.conf ${nginx_home}/nginx.conf"
-    success "${nginx_home}/nginx.conf has been symlinked."
-  else
-    error "Couldn't determine nginx home directory. " \
-      "Run 'nginx -h' to see the default nginx.conf file location," \
-      "and ensure that the enclosing directory exists."
+  h3 "Generating nginx config for dev.gomoku.games..."
+
+  local nginx_config nginx_home
+  nginx_config="$(nginx -h 2>&1 | grep -- '-c.*default' | tr -d ')' | awk 'BEGIN{FS="default: "}{print $2}')"
+  if [[ -z ${nginx_config} ]]; then
+    error "Couldn't determine nginx's default config path from 'nginx -h'."
     return 1
+  fi
+
+  nginx_home="$(dirname "${nginx_config}")"
+  if [[ ! -d ${nginx_home} ]]; then
+    error "nginx config directory ${nginx_home} does not exist."
+    return 1
+  fi
+
+  # Install the repo's main nginx.conf (global http{} settings + the
+  # sites-enabled include) over Homebrew's default. Preserve Homebrew's
+  # original once as nginx.conf.bak; never overwrite that backup on re-runs.
+  if [[ -e ${nginx_home}/nginx.conf && ! -e ${nginx_home}/nginx.conf.bak ]]; then
+    run "sudo cp -p ${nginx_home}/nginx.conf ${nginx_home}/nginx.conf.bak"
+    success "Original nginx.conf backed up to nginx.conf.bak."
+  fi
+  run "sudo cp ${PROJECT_DIR}/iac/local/nginx.conf ${nginx_home}/nginx.conf"
+  success "${nginx_home}/nginx.conf installed."
+
+  # Per-site config follows the Debian layout: the real file lives in
+  # sites-available/ and is enabled via a symlink from sites-enabled/, which
+  # the main config includes.
+  local sites_available="${nginx_home}/sites-available"
+  local sites_enabled="${nginx_home}/sites-enabled"
+  run "sudo mkdir -p ${sites_available} ${sites_enabled}"
+
+  local gomoku_config_file="dev-gomoku-games.conf"
+  local project_config="$PROJECT_DIR/iac/local/${gomoku_config_file}"
+
+  h3 "Generating ${gomoku_config_file}..."
+  bash "$template_dir/dev-gomoku-games.conf.sh" >"${project_config}"
+  success "${gomoku_config_file} generated."
+
+  run "sudo cp ${project_config} ${sites_available}/${gomoku_config_file}"
+  run "sudo ln -nfs ${sites_available}/${gomoku_config_file} ${sites_enabled}/${gomoku_config_file}"
+  success "${gomoku_config_file} installed in sites-available and enabled via sites-enabled."
+
+  # Validate before touching a running server, then hot-reload if nginx is up.
+  # On a cold start nginx isn't running yet; nginx.start() runs its own -t.
+  h3 "Validating nginx configuration..."
+  run.set-next abort-on-error
+  run "sudo ${BREW_HOME}/bin/nginx -t"
+
+  if cluster.is-running "[n]ginx"; then
+    h3 "Reloading nginx..."
+    run "sudo ${BREW_HOME}/bin/nginx -s reload"
+    success "nginx reloaded with the new configuration."
+  else
+    info "nginx is not running; the new config will load on next start."
   fi
 }
 
@@ -744,7 +778,7 @@ cmd_for_each() {
   shift
 
   # This is the default restore from when we started it
-  echo ${GOMOKU_ENGINE} > ${LAST_HTTPD_TYPE}
+  echo ${GOMOKU_ENGINE} >${LAST_HTTPD_TYPE}
   if [[ -s ${LAST_HTTPD_TYPE} ]]; then
     export GOMOKU_ENGINE=$(cat ${LAST_HTTPD_TYPE})
     rm -f ${LAST_HTTPD_TYPE}
@@ -790,7 +824,7 @@ cmd_start() {
 
   run.set-all abort-on-error
 
-  command -v just >/dev/null || brew install just 
+  command -v just >/dev/null || brew install just
   just install
 
   while [[ $# -gt 0 ]]; do
@@ -823,7 +857,7 @@ cmd_start() {
     esac
   done
 
-  echo ${GOMOKU_ENGINE} > ${LAST_HTTPD_TYPE}
+  echo ${GOMOKU_ENGINE} >${LAST_HTTPD_TYPE}
 
   [[ -z "$workers" ]] && workers=${DEFAULT_WORKERS}
 
