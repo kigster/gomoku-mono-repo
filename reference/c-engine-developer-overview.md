@@ -553,8 +553,8 @@ The modular design provides clear extension points for new features:
 
 ```bash
 # Clone and build
-git clone https://github.com/kigster/gomoku-ansi-c
-cd gomoku-ansi-c
+git clone https://github.com/kigster/gomoku-mono-repo
+cd gomoku-mono-repo
 make -C gomoku-c all    # or: just build
 
 # Run game
@@ -642,5 +642,5 @@ make -C gomoku-c test
 | ------------------ | --------------------------------------------------------------- |
 | **Project Status** | Production Ready |
 | **License** | MIT |
-| **Repository**: | <https://github.com/kigster/gomoku-ansi-c> |
+| **Repository**: | <https://github.com/kigster/gomoku-mono-repo> |
 | **Author** | © 2010-2026 [Konstantin Gredeskoul](https://github.com/kigster) |

@@ -20,7 +20,7 @@
 #define GAME_VERSION "3.0.0"
 #define GAME_AUTHOR "Konstantin Gredeskoul"
 #define GAME_LICENSE "MIT License"
-#define GAME_URL "https://github.com/kigster/gomoku-ansi-c"
+#define GAME_URL "https://github.com/kigster/gomoku-mono-repo"
 #define GAME_DESCRIPTION "Gomoku, also known as Five in a Row"
 #define GAME_COPYRIGHT "© 2025-2026 Konstantin Gredeskoul, MIT License"
 #define GAME_RULES_BRIEF                                                       \
