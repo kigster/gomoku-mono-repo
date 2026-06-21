@@ -6,7 +6,7 @@ NOTE: In this type of game flow, the C-based AI `gomoku-httpd` is not used at al
 
 ## Review of the Multi-Player PR
 
-This file describes some problems with the https://github.com/kigster/gomoku-ansi-c/pull/90 that introduces multi-player game.
+This file describes some problems with the https://github.com/kigster/gomoku-mono-repo/pull/90 that introduces multi-player game.
 
 The goal of this task is to address all of the problems described below.
 
