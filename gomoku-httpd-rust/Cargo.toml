@@ -27,7 +27,7 @@ rayon = "1"
 # installed when PRODUCTION_HONEYCOMB_API_KEY and PRODUCTION_HONEYCOMB_DATASET
 # are both set in the process environment (see src/telemetry.rs).
 opentelemetry = "0.22"
-opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"] }
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.15", default-features = false, features = [
     "trace",
     "http-proto",
