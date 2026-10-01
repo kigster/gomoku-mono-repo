@@ -7,7 +7,8 @@ set -euo pipefail
 #   PROJECT_ID       GCP project id
 #   REGION           GCP region (default: us-central1)
 #   TF_VAR_jwt_secret
-#   TF_VAR_database_url
+#   TF_VAR_database_url         (unless TF_VAR_cloud_sql_enabled=true)
+#   TF_VAR_cloud_sql_enabled    (optional, default false; see cloud_sql.tf)
 #   TF_VAR_honeycomb_api_key   (optional)
 #   TF_VAR_honeycomb_dataset   (optional)
 #   TF_VAR_custom_domain       (optional)
@@ -28,7 +29,12 @@ REPO_NAME="gomoku-repo"
 # Required environment variables
 : "${PROJECT_ID:?Set PROJECT_ID to your GCP project ID}"
 : "${TF_VAR_jwt_secret:?Set TF_VAR_jwt_secret (openssl rand -base64 32)}"
-: "${TF_VAR_database_url:?Set TF_VAR_database_url to your PostgreSQL DSN}"
+# Database: either an external DSN, or Cloud SQL provisioned by this stack.
+export TF_VAR_cloud_sql_enabled="${TF_VAR_cloud_sql_enabled:-false}"
+if [[ "${TF_VAR_cloud_sql_enabled}" != "true" ]]; then
+  : "${TF_VAR_database_url:?Set TF_VAR_database_url to your PostgreSQL DSN (or TF_VAR_cloud_sql_enabled=true)}"
+fi
+export TF_VAR_database_url="${TF_VAR_database_url:-}"
 
 # Make ENVIRONMENT visible to Terraform too.
 export TF_VAR_environment="${ENVIRONMENT}"
