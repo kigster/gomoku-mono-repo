@@ -76,9 +76,42 @@ variable "jwt_secret" {
 }
 
 variable "database_url" {
-  description = "PostgreSQL connection string (e.g. Neon DSN)"
+  description = "External PostgreSQL DSN (e.g. Neon/Supabase). Ignored when cloud_sql_enabled = true."
   type        = string
+  default     = ""
   sensitive   = true
+}
+
+# ─── Cloud SQL (see cloud_sql.tf) ─────────────────────────────────────
+
+variable "cloud_sql_enabled" {
+  description = "Provision a per-environment Cloud SQL PostgreSQL 18 instance and point the api at it instead of database_url."
+  type        = bool
+  default     = false
+}
+
+variable "cloud_sql_tier" {
+  description = "Cloud SQL machine tier. db-f1-micro is the cheapest (shared core, ENTERPRISE edition only)."
+  type        = string
+  default     = "db-f1-micro"
+}
+
+variable "cloud_sql_disk_size_gb" {
+  description = "Initial SSD size in GB (10 is the minimum). Grows automatically up to cloud_sql_disk_autoresize_limit_gb."
+  type        = number
+  default     = 10
+}
+
+variable "cloud_sql_disk_autoresize_limit_gb" {
+  description = "Upper bound for automatic disk growth in GB. 0 = unlimited."
+  type        = number
+  default     = 50
+}
+
+variable "cloud_sql_deletion_protection" {
+  description = "Block deletion of the Cloud SQL instance (both Terraform-side and API-side)."
+  type        = bool
+  default     = true
 }
 
 variable "cors_origins" {

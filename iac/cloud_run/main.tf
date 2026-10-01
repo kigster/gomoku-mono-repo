@@ -5,6 +5,10 @@ terraform {
       source  = "hashicorp/google"
       version = "~> 5.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
   # Per-environment state lives at a different `prefix` set via
   # `-backend-config="prefix=cloud-run/${ENVIRONMENT}/gomoku"` at
@@ -155,9 +159,49 @@ resource "google_cloud_run_v2_service" "api" {
         value = google_cloud_run_v2_service.httpd.uri
       }
 
-      env {
-        name  = "DATABASE_URL"
-        value = var.database_url
+      # Database: either an external DSN (DATABASE_URL) or the Cloud SQL
+      # instance from cloud_sql.tf over the /cloudsql unix socket.
+      # api/app/config.py::database_dsn prefers DATABASE_URL, so it is only
+      # set when Cloud SQL is off.
+      dynamic "env" {
+        for_each = var.cloud_sql_enabled ? [] : [1]
+        content {
+          name  = "DATABASE_URL"
+          value = var.database_url
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.cloud_sql_enabled ? {
+          DB_SOCKET = "/cloudsql/${google_sql_database_instance.postgres[0].connection_name}"
+          DB_NAME   = local.cloud_sql_db_name
+          DB_USER   = local.cloud_sql_db_user
+        } : {}
+        content {
+          name  = env.key
+          value = env.value
+        }
+      }
+
+      dynamic "env" {
+        for_each = var.cloud_sql_enabled ? [1] : []
+        content {
+          name = "DB_PASSWORD"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.db_password[0].secret_id
+              version = "latest"
+            }
+          }
+        }
+      }
+
+      dynamic "volume_mounts" {
+        for_each = var.cloud_sql_enabled ? [1] : []
+        content {
+          name       = "cloudsql"
+          mount_path = "/cloudsql"
+        }
       }
 
       env {
@@ -242,6 +286,16 @@ resource "google_cloud_run_v2_service" "api" {
       }
     }
 
+    dynamic "volumes" {
+      for_each = var.cloud_sql_enabled ? [1] : []
+      content {
+        name = "cloudsql"
+        cloud_sql_instance {
+          instances = [google_sql_database_instance.postgres[0].connection_name]
+        }
+      }
+    }
+
     # Async + asyncpg pool: one api instance can comfortably hold 80
     # concurrent requests in flight, each fanning out to a dedicated
     # gomoku-httpd worker (which is single-threaded with concurrency=1).
@@ -256,7 +310,23 @@ resource "google_cloud_run_v2_service" "api" {
     percent = 100
   }
 
-  depends_on = [google_project_service.run_api]
+  lifecycle {
+    precondition {
+      condition     = var.cloud_sql_enabled || var.database_url != ""
+      error_message = "Set database_url (external Postgres DSN) or cloud_sql_enabled = true."
+    }
+  }
+
+  # The revision fails to start if the secret / connector grants are not in
+  # place yet, so they must land before the service (no-ops when disabled).
+  depends_on = [
+    google_project_service.run_api,
+    google_secret_manager_secret_version.db_password,
+    google_secret_manager_secret_iam_member.db_password_access,
+    google_project_iam_member.cloudsql_client,
+    google_sql_user.gomoku,
+    google_sql_database.gomoku,
+  ]
 }
 
 # Allow API to invoke httpd (service-to-service auth)
