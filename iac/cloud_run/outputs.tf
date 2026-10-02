@@ -26,3 +26,13 @@ output "custom_domain_dns_records" {
     : []
   )
 }
+
+output "cloud_sql_connection_name" {
+  description = "Cloud SQL connection name (PROJECT:REGION:INSTANCE); empty when Cloud SQL is disabled"
+  value       = var.cloud_sql_enabled ? google_sql_database_instance.postgres[0].connection_name : ""
+}
+
+output "cloud_sql_password_secret" {
+  description = "Secret Manager secret holding the Cloud SQL user's password; empty when Cloud SQL is disabled"
+  value       = var.cloud_sql_enabled ? google_secret_manager_secret.db_password[0].secret_id : ""
+}

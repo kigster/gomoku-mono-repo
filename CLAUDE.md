@@ -96,7 +96,9 @@ Terraform, and posts a Honeycomb deploy marker. Logic lives in `bin/deploy`.
 Required keys in repo-root `.env` (deploy-time only; never read at runtime —
 production reads Cloud Run env vars set by Terraform):
 
-- `PRODUCTION_DATABASE_URL` — Neon pooled DSN
+- `PRODUCTION_DATABASE_URL` — external pooled DSN (Neon/Supabase), **or**
+  `PRODUCTION_CLOUD_SQL=1` to use the Terraform-managed Cloud SQL
+  PostgreSQL 18 instance instead (see `iac/README.md` → Cloud SQL)
 - `PRODUCTION_JWT_SECRET` — HMAC key (`just jwt-secret` generates one)
 - `HONEYCOMB_INGEST_API_KEY`, `HONEYCOMB_CONFIG_API_KEY`
 - `PROJECT_ID`, `REGION`

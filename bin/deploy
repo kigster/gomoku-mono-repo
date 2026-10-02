@@ -21,6 +21,10 @@
 #                                                                (or PRODUCTION_CUSTOM_DOMAIN)
 #   staging:     STAGING_DATABASE_URL,    STAGING_JWT_SECRET,    STAGING_CUSTOM_DOMAIN
 #
+# Set PRODUCTION_CLOUD_SQL=1 / STAGING_CLOUD_SQL=1 to use the Terraform-managed
+# Cloud SQL PostgreSQL 18 instance (iac/cloud_run/cloud_sql.tf) instead of an
+# external DSN; *_DATABASE_URL is then ignored and may be left empty.
+#
 # Common: HONEYCOMB_INGEST_API_KEY, PROJECT_ID, REGION (default us-central1),
 # HONEYCOMB_DATASET (only for Honeycomb classic 32-char keys), and an
 # optional STAGING_HONEYCOMB_INGEST_API_KEY override.
@@ -61,8 +65,11 @@ jwt_var="${upper_env}_JWT_SECRET"
 domain_var="${upper_env}_CUSTOM_DOMAIN"
 honey_var="${upper_env}_HONEYCOMB_INGEST_API_KEY"
 sendgrid_var="${upper_env}_SENDGRID_API_KEY"
+cloud_sql_var="${upper_env}_CLOUD_SQL"
 
 DATABASE_URL_VAL="${!db_var:-}"
+CLOUD_SQL_ENABLED=false
+[[ "${!cloud_sql_var:-0}" =~ ^(1|true|yes)$ ]] && CLOUD_SQL_ENABLED=true
 JWT_SECRET_VAL="${!jwt_var:-}"
 # Domain falls back to the un-prefixed CUSTOM_DOMAIN so existing prod
 # .env files (which set CUSTOM_DOMAIN=app.gomoku.games) keep working.
@@ -80,7 +87,7 @@ EMAIL_FROM_NAME_VAL="${EMAIL_FROM_NAME:-}"
 
 # Required-key check
 missing=()
-[[ -z "${DATABASE_URL_VAL}" ]] && missing+=("${db_var}")
+[[ "${CLOUD_SQL_ENABLED}" == false && -z "${DATABASE_URL_VAL}" ]] && missing+=("${db_var} (or ${cloud_sql_var}=1)")
 [[ -z "${JWT_SECRET_VAL}" ]] && missing+=("${jwt_var}")
 [[ -z "${HONEYCOMB_KEY_VAL}" ]] && missing+=("${honey_var} or HONEYCOMB_INGEST_API_KEY")
 [[ -z "${PROJECT_ID:-}" ]] && missing+=("PROJECT_ID")
@@ -92,6 +99,7 @@ missing=()
 # runtime env still uses the unprefixed names — that mapping happens in
 # Terraform/main.tf via TF_VAR_*.
 export TF_VAR_database_url="${DATABASE_URL_VAL}"
+export TF_VAR_cloud_sql_enabled="${CLOUD_SQL_ENABLED}"
 export TF_VAR_jwt_secret="${JWT_SECRET_VAL}"
 export TF_VAR_honeycomb_api_key="${HONEYCOMB_KEY_VAL}"
 export TF_VAR_honeycomb_dataset="${HONEYCOMB_DATASET:-}"
@@ -114,12 +122,24 @@ if ! gcloud auth application-default print-access-token >/dev/null 2>&1; then
   gcloud auth application-default login
 fi
 
-step "Running Alembic migrations against ${db_var}"
-(
-  cd "${REPO_ROOT}/api"
-  ENVIRONMENT="${ENVIRONMENT}" DATABASE_URL="${DATABASE_URL_VAL}" \
-    uv run alembic upgrade head
-)
+if [[ "${CLOUD_SQL_ENABLED}" == true ]]; then
+  step "Provisioning Cloud SQL (PostgreSQL 18) — first run takes ~10 min"
+  bash "${REPO_ROOT}/iac/cloud_run/cloud-sql.sh" provision
+
+  step "Running Alembic migrations against Cloud SQL (via cloud-sql-proxy)"
+  (
+    cd "${REPO_ROOT}/api"
+    ENVIRONMENT="${ENVIRONMENT}" \
+      bash "${REPO_ROOT}/iac/cloud_run/cloud-sql.sh" exec -- uv run alembic upgrade head
+  )
+else
+  step "Running Alembic migrations against ${db_var}"
+  (
+    cd "${REPO_ROOT}/api"
+    ENVIRONMENT="${ENVIRONMENT}" DATABASE_URL="${DATABASE_URL_VAL}" \
+      uv run alembic upgrade head
+  )
+fi
 
 step "Building frontend → api/public"
 (cd "${REPO_ROOT}" && just install-frontend)
